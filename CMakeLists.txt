@@ -148,6 +148,10 @@ if(APPLE)
     target_link_libraries(DroidStar PRIVATE
         "-framework AVFoundation"
     )
+    if(IOS)
+        include(${Qt6Multimedia_DIR}/Qt6MultimediaMacros.cmake)
+        qt_add_ios_ffmpeg_libraries(DroidStar)
+    endif()
 endif()
 
 if(ANDROID)
@@ -211,7 +215,7 @@ if(FALSE) # set TRUE for flite
     )
 endif()
 
-if(TRUE) # set TRUE for md380_vocoder
+if(NOT IOS) # md380_vocoder is not available on iOS
     target_compile_definitions(DroidStar PRIVATE
         USE_MD380_VOCODER
     )
