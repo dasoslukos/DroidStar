@@ -11,7 +11,7 @@
 	<key>CFBundleIconName</key>
 	<string>AppIcon</string>
 	<key>CFBundleIdentifier</key>
-	<string>org.dudetronics.droidstar</string>
+	<string>com.foxthings.DroidStar</string>
 	<key>CFBundleName</key>
 	<string>DroidStar</string>
 	<key>CFBundlePackageType</key>
