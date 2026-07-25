@@ -148,6 +148,7 @@ if(APPLE)
     set_target_properties(DroidStar PROPERTIES
         MACOSX_BUNDLE_GUI_IDENTIFIER com.foxthings.DroidStar
         XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER com.foxthings.DroidStar
+        XCODE_ATTRIBUTE_DEBUG_INFORMATION_FORMAT "dwarf-with-dsym"
     )
     target_link_libraries(DroidStar PRIVATE
         "-framework AVFoundation"
