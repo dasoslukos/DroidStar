@@ -245,9 +245,10 @@ install(TARGETS DroidStar
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
-qt_generate_deploy_app_script(
+qt_generate_deploy_qml_app_script(
     TARGET DroidStar
     OUTPUT_SCRIPT deploy_script
     NO_UNSUPPORTED_PLATFORM_ERROR
+    EXCLUDE_PLUGIN_TYPES sqldrivers
 )
 install(SCRIPT ${deploy_script})
