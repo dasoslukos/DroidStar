@@ -211,14 +211,31 @@ if(FALSE) # set TRUE for flite
     )
 endif()
 
-if(TRUE) # set TRUE for md380_vocoder
+if(APPLE AND NOT IOS)
+    set(MD380_VOCODER_SOURCE_DIR
+        "${CMAKE_CURRENT_SOURCE_DIR}/../md380_vocoder_dynarmic"
+        CACHE PATH "Path to the md380_vocoder_dynarmic source tree"
+    )
+
+    if(NOT EXISTS "${MD380_VOCODER_SOURCE_DIR}/CMakeLists.txt")
+        message(FATAL_ERROR
+            "md380_vocoder_dynarmic was not found at: "
+            "${MD380_VOCODER_SOURCE_DIR}"
+        )
+    endif()
+
+    add_subdirectory(
+        "${MD380_VOCODER_SOURCE_DIR}"
+        "${CMAKE_BINARY_DIR}/md380_vocoder_dynarmic"
+        EXCLUDE_FROM_ALL
+    )
+
     target_compile_definitions(DroidStar PRIVATE
         USE_MD380_VOCODER
     )
+
     target_link_libraries(DroidStar PRIVATE
         md380_vocoder
-        #/home/nostar/Android/Sdk/local/libmd380_vocoder.a
-        # -Xlinker --section-start=.firmware=0x0800C000 -Xlinker --section-start=.sram=0x20000000
     )
 endif()
 
