@@ -211,14 +211,46 @@ if(FALSE) # set TRUE for flite
     )
 endif()
 
-if(TRUE) # set TRUE for md380_vocoder
-    target_compile_definitions(DroidStar PRIVATE
-        USE_MD380_VOCODER
+if(ANDROID AND CMAKE_ANDROID_ARCH_ABI STREQUAL "arm64-v8a")
+    # Use the vendored header-only Boost tree for the Android build.
+    set(Boost_NO_SYSTEM_PATHS TRUE CACHE BOOL "" FORCE)
+    set(BOOST_ROOT
+        "${CMAKE_CURRENT_SOURCE_DIR}/third_party/ext-boost"
+        CACHE PATH "" FORCE
     )
-    target_link_libraries(DroidStar PRIVATE
-        md380_vocoder
-        #/home/nostar/Android/Sdk/local/libmd380_vocoder.a
-        # -Xlinker --section-start=.firmware=0x0800C000 -Xlinker --section-start=.sram=0x20000000
+    set(Boost_ROOT
+        "${CMAKE_CURRENT_SOURCE_DIR}/third_party/ext-boost"
+        CACHE PATH "" FORCE
+    )
+    set(Boost_INCLUDE_DIR
+        "${CMAKE_CURRENT_SOURCE_DIR}/third_party/ext-boost"
+        CACHE PATH "" FORCE
+    )
+
+    # DroidStar only needs Dynarmic's 32-bit ARM frontend to run
+    # the MD380 firmware on the arm64 Android host.
+    set(DYNARMIC_TESTS OFF CACHE BOOL "" FORCE)
+    set(DYNARMIC_USE_BUNDLED_EXTERNALS ON CACHE BOOL "" FORCE)
+    set(DYNARMIC_FRONTENDS "A32" CACHE STRING "" FORCE)
+
+    # Compatibility for older Boost headers with modern Android libc++.
+    # Restores std::unary_function and std::binary_function declarations
+    # removed from the normal C++17-and-newer API.
+    add_compile_definitions(
+        _LIBCPP_ENABLE_CXX17_REMOVED_UNARY_BINARY_FUNCTION
+    )
+
+    add_subdirectory(
+        third_party/md380_vocoder_dynarmic
+        third_party/md380_vocoder_dynarmic-build
+    )
+
+    target_compile_definitions(
+        DroidStar PRIVATE USE_MD380_VOCODER
+    )
+
+    target_link_libraries(
+        DroidStar PRIVATE md380_vocoder
     )
 endif()
 

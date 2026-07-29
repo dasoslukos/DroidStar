@@ -1,2 +1,11 @@
 build/
 .vscode/
+
+# Local Qt Creator settings
+.qtcreator/
+
+# Private Android signing key
+android_release.keystore
+
+# Local generated third-party build directory
+third_party/md380_vocoder_dynarmic-build/
