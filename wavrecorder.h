@@ -34,6 +34,11 @@ public:
                quint16 channelCount = 1,
                quint16 bitsPerSample = 16);
 
+    bool start(int fileDescriptor,
+               quint32 sampleRate = 8000,
+               quint16 channelCount = 1,
+               quint16 bitsPerSample = 16);
+
     bool appendPcm(const int16_t *samples, std::size_t sampleCount);
     void stop();
 

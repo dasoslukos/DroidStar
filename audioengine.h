@@ -78,8 +78,10 @@ private:
 	bool m_agc;
 	WavRecorder m_rxrecorder;
 	QString m_rxrecordingpath;
+	QString m_rxrecordinguri;
 	WavRecorder m_txrecorder;
 	QString m_txrecordingpath;
+	QString m_txrecordinguri;
 	float m_srm; // sample rate multiplier for macOS HACK
 
 	float m_audio_out_temp_buf[320];   //!< output of decoder
@@ -102,6 +104,15 @@ private:
 	float m_aout_gain;
 	float m_volume;
 
+	bool recording_enabled() const;
+	bool start_recording(
+	    WavRecorder &recorder,
+	    QString &displayPath,
+	    QString &contentUri,
+	    const QString &direction
+	) const;
+
+	void publish_recording(QString &contentUri) const;
 	QString make_recording_path(const QString &direction) const;
 private slots:
 	void input_data_received();

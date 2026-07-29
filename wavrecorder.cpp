@@ -103,6 +103,90 @@ bool WavRecorder::start(const QString &filePath,
     return true;
 }
 
+bool WavRecorder::start(int fileDescriptor,
+                        quint32 sampleRate,
+                        quint16 channelCount,
+                        quint16 bitsPerSample)
+{
+    QMutexLocker locker(&m_mutex);
+
+    closeLocked();
+    m_error.clear();
+
+    if (fileDescriptor < 0) {
+        m_error = QStringLiteral("Recording file descriptor is invalid");
+        return false;
+    }
+
+    if (sampleRate == 0) {
+        m_error = QStringLiteral(
+            "WAV sample rate must be greater than zero"
+        );
+        return false;
+    }
+
+    if (channelCount == 0) {
+        m_error = QStringLiteral(
+            "WAV channel count must be greater than zero"
+        );
+        return false;
+    }
+
+    if (bitsPerSample != 16) {
+        m_error = QStringLiteral(
+            "WavRecorder currently supports only 16-bit PCM"
+        );
+        return false;
+    }
+
+    const quint64 blockAlign =
+        static_cast<quint64>(channelCount) *
+        static_cast<quint64>(bitsPerSample / 8);
+
+    const quint64 byteRate =
+        static_cast<quint64>(sampleRate) * blockAlign;
+
+    if (blockAlign > std::numeric_limits<quint16>::max() ||
+        byteRate > std::numeric_limits<quint32>::max()) {
+        m_error = QStringLiteral("Requested WAV format is too large");
+        return false;
+    }
+
+    if (!m_file.open(
+            fileDescriptor,
+            QIODevice::ReadWrite,
+            QFileDevice::AutoCloseHandle
+        )) {
+        m_error = QStringLiteral(
+            "Could not adopt recording file descriptor: %1"
+        ).arg(m_file.errorString());
+
+        return false;
+    }
+
+    if (!m_file.resize(0) || !m_file.seek(0)) {
+        m_error = QStringLiteral(
+            "Could not prepare MediaStore recording file: %1"
+        ).arg(m_file.errorString());
+
+        m_file.close();
+        return false;
+    }
+
+    m_sampleRate = sampleRate;
+    m_channelCount = channelCount;
+    m_bitsPerSample = bitsPerSample;
+    m_dataBytes = 0;
+
+    if (!writeHeaderLocked()) {
+        m_file.close();
+        return false;
+    }
+
+    m_recording = true;
+    return true;
+}
+
 bool WavRecorder::appendPcm(const int16_t *samples,
                             std::size_t sampleCount)
 {

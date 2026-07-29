@@ -20,7 +20,9 @@
 #include <QDateTime>
 #include <QDebug>
 #include <QDir>
+#include <QFileInfo>
 #include <QStandardPaths>
+#include <QSettings>
 
 #if defined(Q_OS_ANDROID)
 #include <QCoreApplication>
@@ -170,15 +172,13 @@ void AudioEngine::start_capture()
 			    8000.0f;
 		}
 
-		if (!m_txrecorder.isRecording()) {
-			m_txrecordingpath =
-			    make_recording_path(QStringLiteral("TX"));
-
-			if (m_txrecorder.start(
+		if (recording_enabled() &&
+		    !m_txrecorder.isRecording()) {
+			if (start_recording(
+			        m_txrecorder,
 			        m_txrecordingpath,
-			        8000,
-			        1,
-			        16
+			        m_txrecordinguri,
+			        QStringLiteral("TX")
 			    )) {
 				qDebug() << "TX recording started:"
 				         << m_txrecordingpath;
@@ -187,6 +187,7 @@ void AudioEngine::start_capture()
 				qWarning() << "Could not start TX recording:"
 				           << m_txrecorder.errorString();
 				m_txrecordingpath.clear();
+				m_txrecordinguri.clear();
 			}
 		}
 
@@ -210,6 +211,7 @@ void AudioEngine::stop_capture()
 
 	if (m_txrecorder.isRecording()) {
 		m_txrecorder.stop();
+		publish_recording(m_txrecordinguri);
 
 		if (!m_txrecorder.errorString().isEmpty()) {
 			qWarning() << "TX recording stopped with an error:"
@@ -228,16 +230,22 @@ void AudioEngine::stop_capture()
 
 void AudioEngine::start_playback()
 {
-	if (!m_rxrecorder.isRecording()) {
-		m_rxrecordingpath = make_recording_path(QStringLiteral("RX"));
-
-		if (m_rxrecorder.start(m_rxrecordingpath, 8000, 1, 16)) {
-			qDebug() << "RX recording started:" << m_rxrecordingpath;
+	if (recording_enabled() &&
+	    !m_rxrecorder.isRecording()) {
+		if (start_recording(
+		        m_rxrecorder,
+		        m_rxrecordingpath,
+		        m_rxrecordinguri,
+		        QStringLiteral("RX")
+		    )) {
+			qDebug() << "RX recording started:"
+			         << m_rxrecordingpath;
 		}
 		else {
 			qWarning() << "Could not start RX recording:"
 			           << m_rxrecorder.errorString();
 			m_rxrecordingpath.clear();
+			m_rxrecordinguri.clear();
 		}
 	}
 
@@ -253,6 +261,7 @@ void AudioEngine::stop_playback()
 {
 	if (m_rxrecorder.isRecording()) {
 		m_rxrecorder.stop();
+		publish_recording(m_rxrecordinguri);
 
 		if (!m_rxrecorder.errorString().isEmpty()) {
 			qWarning() << "RX recording stopped with an error:"
@@ -325,6 +334,7 @@ void AudioEngine::write(int16_t *pcm, size_t s)
 		qWarning() << "RX recording write failed:"
 		           << m_rxrecorder.errorString();
 		m_rxrecorder.stop();
+		publish_recording(m_rxrecordinguri);
 	}
 
 	size_t l = m_outdev->write((const char *) pcm, sizeof(int16_t) * s);
@@ -360,6 +370,7 @@ uint16_t AudioEngine::read(int16_t *pcm, int s)
 			qWarning() << "TX recording write failed:"
 			           << m_txrecorder.errorString();
 			m_txrecorder.stop();
+		publish_recording(m_txrecordinguri);
 		}
 
 		return 1;
@@ -401,6 +412,7 @@ uint16_t AudioEngine::read(int16_t *pcm)
 		qWarning() << "TX recording write failed:"
 		           << m_txrecorder.errorString();
 		m_txrecorder.stop();
+		publish_recording(m_txrecordinguri);
 	}
 
 	return s;
@@ -497,7 +509,178 @@ void AudioEngine::process_audio(int16_t *pcm, size_t s)
 	}
 }
 
-QString AudioEngine::make_recording_path(const QString &direction) const
+bool AudioEngine::recording_enabled() const
+{
+	QSettings settings(
+	    QSettings::IniFormat,
+	    QSettings::UserScope,
+	    QStringLiteral("dudetronics"),
+	    QStringLiteral("droidstar")
+	);
+
+	return settings.value(
+	    QStringLiteral("RECORDING_ENABLED"),
+	    false
+	).toBool();
+}
+
+bool AudioEngine::start_recording(
+    WavRecorder &recorder,
+    QString &displayPath,
+    QString &contentUri,
+    const QString &direction
+) const
+{
+	QString safeDirection = direction.trimmed().toUpper();
+
+	if (safeDirection != QStringLiteral("RX") &&
+	    safeDirection != QStringLiteral("TX")) {
+		safeDirection = QStringLiteral("AUDIO");
+	}
+
+	const QString fileName =
+	    QDateTime::currentDateTime().toString(
+	        QStringLiteral("yyyyMMdd-HHmmss-zzz")
+	    ) +
+	    QStringLiteral("_") +
+	    safeDirection +
+	    QStringLiteral(".wav");
+
+	QSettings settings(
+	    QSettings::IniFormat,
+	    QSettings::UserScope,
+	    QStringLiteral("dudetronics"),
+	    QStringLiteral("droidstar")
+	);
+
+	const QString location = settings.value(
+	    QStringLiteral("RECORDING_LOCATION"),
+	    QStringLiteral("shared")
+	).toString().simplified().toLower();
+
+	displayPath.clear();
+	contentUri.clear();
+
+#if defined(Q_OS_ANDROID)
+	if (location == QStringLiteral("shared")) {
+		const QJniObject context =
+		    QNativeInterface::QAndroidApplication::context();
+
+		const QJniObject javaFileName =
+		    QJniObject::fromString(fileName);
+
+		if (context.isValid() && javaFileName.isValid()) {
+			const QJniObject result =
+			    QJniObject::callStaticObjectMethod(
+			        "org/dudetronics/droidstar/RecordingStorage",
+			        "createSharedMusicRecording",
+			        "(Landroid/content/Context;"
+			        "Ljava/lang/String;)Ljava/lang/String;",
+			        context.object<jobject>(),
+			        javaFileName.object<jstring>()
+			    );
+
+			if (result.isValid()) {
+				const QString resultText = result.toString();
+				const qsizetype separator =
+				    resultText.indexOf(QLatin1Char('\n'));
+
+				if (separator > 0) {
+					bool descriptorOkay = false;
+
+					const int fileDescriptor =
+					    resultText.left(separator).toInt(
+					        &descriptorOkay
+					    );
+
+					const QString uri =
+					    resultText.mid(separator + 1);
+
+					if (descriptorOkay &&
+					    fileDescriptor >= 0 &&
+					    !uri.isEmpty()) {
+						if (recorder.start(
+						        fileDescriptor,
+						        8000,
+						        1,
+						        16
+						    )) {
+							displayPath =
+							    QStringLiteral(
+							        "Music/DroidStar/"
+							        "Recordings/%1"
+							    ).arg(fileName);
+
+							contentUri = uri;
+							return true;
+						}
+
+						const QJniObject javaUri =
+						    QJniObject::fromString(uri);
+
+						QJniObject::callStaticMethod<jboolean>(
+						    "org/dudetronics/droidstar/"
+						    "RecordingStorage",
+						    "discardSharedMusicRecording",
+						    "(Landroid/content/Context;"
+						    "Ljava/lang/String;)Z",
+						    context.object<jobject>(),
+						    javaUri.object<jstring>()
+						);
+
+						return false;
+					}
+				}
+			}
+		}
+
+		qWarning()
+		    << "Could not create shared Music recording;"
+		    << "falling back to app storage";
+	}
+#endif
+
+	displayPath = make_recording_path(safeDirection);
+	return recorder.start(displayPath, 8000, 1, 16);
+}
+
+void AudioEngine::publish_recording(QString &contentUri) const
+{
+	if (contentUri.isEmpty()) {
+		return;
+	}
+
+#if defined(Q_OS_ANDROID)
+	const QJniObject context =
+	    QNativeInterface::QAndroidApplication::context();
+
+	const QJniObject javaUri =
+	    QJniObject::fromString(contentUri);
+
+	if (context.isValid() && javaUri.isValid()) {
+		const jboolean published =
+		    QJniObject::callStaticMethod<jboolean>(
+		        "org/dudetronics/droidstar/RecordingStorage",
+		        "publishSharedMusicRecording",
+		        "(Landroid/content/Context;"
+		        "Ljava/lang/String;)Z",
+		        context.object<jobject>(),
+		        javaUri.object<jstring>()
+		    );
+
+		if (!published) {
+			qWarning() << "Could not publish MediaStore recording:"
+			           << contentUri;
+		}
+	}
+#endif
+
+	contentUri.clear();
+}
+
+QString AudioEngine::make_recording_path(
+    const QString &direction
+) const
 {
 	QString basePath;
 
@@ -551,7 +734,8 @@ QString AudioEngine::make_recording_path(const QString &direction) const
 	const QString fileName =
 	    QDateTime::currentDateTime().toString(
 	        QStringLiteral("yyyyMMdd-HHmmss-zzz")
-	    ) + QStringLiteral("_") +
+	    ) +
+	    QStringLiteral("_") +
 	    safeDirection +
 	    QStringLiteral(".wav");
 
