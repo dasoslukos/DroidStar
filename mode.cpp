@@ -81,6 +81,18 @@ Mode::~Mode()
 {
 }
 
+void Mode::create_audio_engine()
+{
+	m_audio = new AudioEngine(m_audioin, m_audioout, m_mode);
+	connect(
+		m_audio,
+		&AudioEngine::recording_log,
+		this,
+		&Mode::update_log
+	);
+	m_audio->init();
+}
+
 void Mode::init(QString callsign, uint32_t dmrid, uint16_t nxdnid, char module, QString refname, QString host, int port, bool ipv6, QString vocoder, QString modem, QString audioin, QString audioout, bool mdirect)
 {
 	m_dmrid = dmrid;
@@ -97,6 +109,7 @@ void Mode::init(QString callsign, uint32_t dmrid, uint16_t nxdnid, char module, 
 	m_modem = nullptr;
 	m_ambedev = nullptr;
     m_mbevocoder = nullptr;
+	m_audio = nullptr;
 	m_hwrx = false;
 	m_hwtx = false;
 	m_tx = false;
@@ -300,6 +313,7 @@ void Mode::deleteLater()
 		//m_ping_timer->stop();
 		send_disconnect();
         delete m_audio;
+		m_audio = nullptr;
         //if(m_mbevocoder != nullptr) delete m_mbevocoder;
 #if !defined(Q_OS_IOS)
 		if(m_hwtx){

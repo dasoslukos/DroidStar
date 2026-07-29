@@ -860,8 +860,7 @@ void IAX::connected() {
     m_ping_timer = new QTimer();
     connect(m_ping_timer, SIGNAL(timeout()), this, SLOT(send_ping()));
     m_ping_timer->start(10000);
-	m_audio = new AudioEngine(m_audioin, m_audioout);
-	m_audio->init();
+	create_audio_engine();
 	m_audio->start_playback();
 	m_audio->set_input_buffer_size(640);
 	m_audio->start_capture();

@@ -355,8 +355,7 @@ void DMR::setup_connection()
 	connect(m_ping_timer, SIGNAL(timeout()), this, SLOT(send_ping()));
 	m_ping_timer->start(5000);
 	if (m_modeinfo.sw_vocoder_loaded) {
-		m_audio = new AudioEngine(m_audioin, m_audioout);
-		m_audio->init();
+		create_audio_engine();
 	}
 }
 
@@ -374,8 +373,7 @@ void DMR::mmdvm_direct_connect()
 		connect(m_txtimer, SIGNAL(timeout()), this, SLOT(transmit()));
 		m_rxtimer = new QTimer();
 		connect(m_rxtimer, SIGNAL(timeout()), this, SLOT(process_rx_data()));
-		m_audio = new AudioEngine(m_audioin, m_audioout);
-		m_audio->init();
+		create_audio_engine();
 	} else {
 		qDebug() << "No modem, cant do MMDVM_DIRECT";
 	}

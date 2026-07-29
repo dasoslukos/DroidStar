@@ -85,8 +85,7 @@ void NXDN::process_udp()
 			connect(m_ping_timer, SIGNAL(timeout()), this, SLOT(send_ping()));
 			//m_mbeenc->set_gain_adjust(2.5);
 			m_modeinfo.sw_vocoder_loaded = load_vocoder_plugin();
-			m_audio = new AudioEngine(m_audioin, m_audioout);
-			m_audio->init();
+			create_audio_engine();
 			m_ping_timer->start(1000);
 		}
 		if( (m_modeinfo.stream_state == STREAM_LOST) || (m_modeinfo.stream_state == STREAM_END) ){
@@ -317,6 +316,9 @@ void NXDN::send_frame()
 	else{
 		fprintf(stderr, "NXDN TX stopped\n");
 		m_txtimer->stop();
+		if (m_ttsid == 0 && m_audio) {
+			m_audio->stop_capture();
+		}
 		temp_nxdn = get_eot();
 		m_ttscnt = 0;
 		txdata.append((char *)temp_nxdn, 43);
@@ -678,7 +680,7 @@ void NXDN::process_rx_data()
 		m_rxwatchdog = 0;
 		m_modeinfo.streamid = 0;
 		m_rxcodecq.clear();
-		qDebug() << "YSF playback stopped";
+		qDebug() << "NXDN playback stopped";
 		m_modeinfo.stream_state = STREAM_IDLE;
 		return;
 	}

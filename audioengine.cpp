@@ -37,11 +37,14 @@
 #define MACHAK 0
 #endif
 
-AudioEngine::AudioEngine(QString in, QString out) :
+AudioEngine::AudioEngine(QString in, QString out, QString mode) :
+	m_mode(mode),
 	m_outputdevice(out),
 	m_inputdevice(in),
 	m_out(nullptr),
 	m_in(nullptr),
+	m_outdev(nullptr),
+	m_indev(nullptr),
 	m_srm(1)
 {
 	m_audio_out_temp_buf_p = m_audio_out_temp_buf;
@@ -54,6 +57,15 @@ AudioEngine::AudioEngine(QString in, QString out) :
 
 AudioEngine::~AudioEngine()
 {
+	// Finalize any recording still active during disconnect or shutdown.
+	stop_capture();
+	stop_playback();
+}
+
+void AudioEngine::log_recording(const QString &message)
+{
+	qDebug().noquote() << message;
+	emit recording_log(message);
 }
 
 QStringList AudioEngine::discover_audio_devices(uint8_t d)
@@ -180,12 +192,18 @@ void AudioEngine::start_capture()
 			        m_txrecordinguri,
 			        QStringLiteral("TX")
 			    )) {
-				qDebug() << "TX recording started:"
-				         << m_txrecordingpath;
+				log_recording(
+					QStringLiteral("%1 TX recording started: %2")
+						.arg(m_mode)
+						.arg(m_txrecordingpath)
+				);
 			}
 			else {
-				qWarning() << "Could not start TX recording:"
-				           << m_txrecorder.errorString();
+				log_recording(
+					QStringLiteral("%1 TX recording failed: %2")
+						.arg(m_mode)
+						.arg(m_txrecorder.errorString())
+				);
 				m_txrecordingpath.clear();
 				m_txrecordinguri.clear();
 			}
@@ -214,17 +232,33 @@ void AudioEngine::stop_capture()
 		publish_recording(m_txrecordinguri);
 
 		if (!m_txrecorder.errorString().isEmpty()) {
-			qWarning() << "TX recording stopped with an error:"
-			           << m_txrecorder.errorString();
+			log_recording(
+				QStringLiteral(
+					"%1 TX recording failed while saving %2: %3"
+				)
+					.arg(m_mode)
+					.arg(m_txrecordingpath)
+					.arg(m_txrecorder.errorString())
+			);
 		}
 		else {
-			qDebug() << "TX recording completed:"
-			         << m_txrecordingpath
-			         << m_txrecorder.dataBytesWritten()
-			         << "PCM bytes";
+			const double pcmBytes = static_cast<double>(
+				m_txrecorder.dataBytesWritten()
+			);
+
+			log_recording(
+				QStringLiteral(
+					"%1 TX recording saved: %2 (%3 s, %4 KiB)"
+				)
+					.arg(m_mode)
+					.arg(m_txrecordingpath)
+					.arg(pcmBytes / 16000.0, 0, 'f', 1)
+					.arg(pcmBytes / 1024.0, 0, 'f', 1)
+			);
 		}
 
 		m_txrecordingpath.clear();
+		m_txrecordinguri.clear();
 	}
 }
 
@@ -238,12 +272,18 @@ void AudioEngine::start_playback()
 		        m_rxrecordinguri,
 		        QStringLiteral("RX")
 		    )) {
-			qDebug() << "RX recording started:"
-			         << m_rxrecordingpath;
+			log_recording(
+				QStringLiteral("%1 RX recording started: %2")
+					.arg(m_mode)
+					.arg(m_rxrecordingpath)
+			);
 		}
 		else {
-			qWarning() << "Could not start RX recording:"
-			           << m_rxrecorder.errorString();
+			log_recording(
+				QStringLiteral("%1 RX recording failed: %2")
+					.arg(m_mode)
+					.arg(m_rxrecorder.errorString())
+			);
 			m_rxrecordingpath.clear();
 			m_rxrecordinguri.clear();
 		}
@@ -264,17 +304,33 @@ void AudioEngine::stop_playback()
 		publish_recording(m_rxrecordinguri);
 
 		if (!m_rxrecorder.errorString().isEmpty()) {
-			qWarning() << "RX recording stopped with an error:"
-			           << m_rxrecorder.errorString();
+			log_recording(
+				QStringLiteral(
+					"%1 RX recording failed while saving %2: %3"
+				)
+					.arg(m_mode)
+					.arg(m_rxrecordingpath)
+					.arg(m_rxrecorder.errorString())
+			);
 		}
 		else {
-			qDebug() << "RX recording completed:"
-			         << m_rxrecordingpath
-			         << m_rxrecorder.dataBytesWritten()
-			         << "PCM bytes";
+			const double pcmBytes = static_cast<double>(
+				m_rxrecorder.dataBytesWritten()
+			);
+
+			log_recording(
+				QStringLiteral(
+					"%1 RX recording saved: %2 (%3 s, %4 KiB)"
+				)
+					.arg(m_mode)
+					.arg(m_rxrecordingpath)
+					.arg(pcmBytes / 16000.0, 0, 'f', 1)
+					.arg(pcmBytes / 1024.0, 0, 'f', 1)
+			);
 		}
 
 		m_rxrecordingpath.clear();
+		m_rxrecordinguri.clear();
 	}
 
 	if (m_out) {

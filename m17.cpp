@@ -233,8 +233,7 @@ void M17::process_udp()
 			m_ping_timer = new QTimer();
 			connect(m_ping_timer, SIGNAL(timeout()), this, SLOT(send_ping()));
 			m_ping_timer->start(8000);
-			m_audio = new AudioEngine(m_audioin, m_audioout);
-			m_audio->init();
+			create_audio_engine();
 			m_modeinfo.sw_vocoder_loaded = true;
 		}
 		emit update(m_modeinfo);
@@ -383,8 +382,7 @@ void M17::mmdvm_direct_connect()
 	connect(m_txtimer, SIGNAL(timeout()), this, SLOT(transmit()));
 	m_rxtimer = new QTimer();
 	connect(m_rxtimer, SIGNAL(timeout()), this, SLOT(process_rx_data()));
-	m_audio = new AudioEngine(m_audioin, m_audioout);
-	m_audio->init();
+	create_audio_engine();
 	emit update(m_modeinfo);
 }
 

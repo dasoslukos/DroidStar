@@ -168,6 +168,7 @@ protected slots:
     void host_lookup();
     void debug_changed(bool debug){ m_debug = debug; }
 protected:
+	void create_audio_engine();
     QString m_mode;
 	QUdpSocket *m_udp = nullptr;
 	QHostAddress m_address;

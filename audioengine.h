@@ -41,7 +41,7 @@ class AudioEngine : public QObject
 	Q_OBJECT
 public:
 	//explicit AudioEngine(QObject *parent = nullptr);
-	AudioEngine(QString in, QString out);
+	AudioEngine(QString in, QString out, QString mode);
 	~AudioEngine();
 	static QStringList discover_audio_devices(uint8_t d);
 	void init();
@@ -60,8 +60,10 @@ public:
 	uint16_t read(int16_t *);
 	uint16_t level() { return m_maxlevel; }
 signals:
+	void recording_log(QString message);
 
 private:
+	QString m_mode;
 	QString m_outputdevice;
 	QString m_inputdevice;
 #if QT_VERSION < QT_VERSION_CHECK(6, 3, 0)
@@ -114,6 +116,7 @@ private:
 
 	void publish_recording(QString &contentUri) const;
 	QString make_recording_path(const QString &direction) const;
+	void log_recording(const QString &message);
 private slots:
 	void input_data_received();
 	void process_audio(int16_t *pcm, size_t s);
