@@ -15,6 +15,8 @@
 	along with this program.  If not, see <https://www.gnu.org/licenses/>.
 */
 #include "mode.h"
+
+#include <QStringList>
 #ifdef Q_OS_WIN
 #include <windows.h>
 #else
@@ -83,7 +85,14 @@ Mode::~Mode()
 
 void Mode::create_audio_engine()
 {
-	m_audio = new AudioEngine(m_audioin, m_audioout, m_mode);
+	m_audio = new AudioEngine(
+		m_audioin,
+		m_audioout,
+		m_mode,
+		[this](bool tx) {
+			return recording_metadata(tx);
+		}
+	);
 	connect(
 		m_audio,
 		&AudioEngine::recording_log,
@@ -91,6 +100,76 @@ void Mode::create_audio_engine()
 		&Mode::update_log
 	);
 	m_audio->init();
+}
+
+QString Mode::recording_metadata(bool tx) const
+{
+	QStringList parts;
+
+	auto addPart = [&parts](const QString &value) {
+		const QString cleaned = value.simplified();
+		if (!cleaned.isEmpty() && !parts.contains(cleaned, Qt::CaseInsensitive)) {
+			parts.append(cleaned);
+		}
+	};
+
+	auto reflectorTag = [this]() {
+		QString tag = m_refname.simplified();
+		const QChar moduleCharacter = QChar::fromLatin1(m_module);
+		if (!moduleCharacter.isNull() && !moduleCharacter.isSpace()) {
+			const QString moduleText(1, moduleCharacter);
+			if (!tag.endsWith(moduleText, Qt::CaseInsensitive)) {
+				tag += moduleText;
+			}
+		}
+		return tag;
+	};
+
+	if (m_mode == QStringLiteral("DMR") ||
+	    m_mode == QStringLiteral("P25") ||
+	    m_mode == QStringLiteral("NXDN")) {
+		uint32_t destination = m_modeinfo.dstid;
+		uint32_t source = m_modeinfo.srcid;
+
+		if (tx) {
+			destination = m_refname.toUInt();
+			source = m_mode == QStringLiteral("NXDN") ? m_nxdnid : m_dmrid;
+		}
+		else if (!destination) {
+			destination = m_refname.toUInt();
+		}
+
+		if (destination) {
+			addPart(QStringLiteral("TG%1").arg(destination));
+		}
+		if (source) {
+			addPart(QStringLiteral("ID%1").arg(source));
+		}
+	}
+	else if (m_mode == QStringLiteral("YSF")) {
+		addPart(m_refname);
+		addPart(tx ? m_modeinfo.callsign
+		           : (!m_modeinfo.src.trimmed().isEmpty() ? m_modeinfo.src : m_modeinfo.gw));
+	}
+	else if (m_mode == QStringLiteral("REF") ||
+	         m_mode == QStringLiteral("XRF") ||
+	         m_mode == QStringLiteral("DCS")) {
+		addPart(reflectorTag());
+		addPart(tx ? (!m_txmycall.trimmed().isEmpty() ? m_txmycall : m_modeinfo.callsign)
+		           : m_modeinfo.src);
+	}
+	else if (m_mode == QStringLiteral("M17")) {
+		addPart(reflectorTag());
+		addPart(tx ? m_modeinfo.callsign : m_modeinfo.src);
+	}
+	else if (m_mode == QStringLiteral("IAX")) {
+		addPart(m_modeinfo.callsign);
+	}
+	else {
+		addPart(tx ? m_modeinfo.callsign : m_modeinfo.src);
+	}
+
+	return parts.join(QLatin1Char('_'));
 }
 
 void Mode::init(QString callsign, uint32_t dmrid, uint16_t nxdnid, char module, QString refname, QString host, int port, bool ipv6, QString vocoder, QString modem, QString audioin, QString audioout, bool mdirect)

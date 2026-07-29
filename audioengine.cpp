@@ -37,14 +37,21 @@
 #define MACHAK 0
 #endif
 
-AudioEngine::AudioEngine(QString in, QString out, QString mode) :
+AudioEngine::AudioEngine(
+	QString in,
+	QString out,
+	QString mode,
+	std::function<QString(bool)> metadataProvider
+) :
 	m_mode(mode),
+	m_metadataProvider(metadataProvider),
 	m_outputdevice(out),
 	m_inputdevice(in),
 	m_out(nullptr),
 	m_in(nullptr),
 	m_outdev(nullptr),
 	m_indev(nullptr),
+	m_rxrecordingpending(false),
 	m_srm(1)
 {
 	m_audio_out_temp_buf_p = m_audio_out_temp_buf;
@@ -190,7 +197,10 @@ void AudioEngine::start_capture()
 			        m_txrecorder,
 			        m_txrecordingpath,
 			        m_txrecordinguri,
-			        QStringLiteral("TX")
+			        QStringLiteral("TX"),
+				        m_metadataProvider
+				            ? m_metadataProvider(true)
+				            : QString()
 			    )) {
 				log_recording(
 					QStringLiteral("%1 TX recording started: %2")
@@ -264,29 +274,11 @@ void AudioEngine::stop_capture()
 
 void AudioEngine::start_playback()
 {
+	// Delay opening the RX WAV until the first decoded PCM frame.
+	// Header metadata is normally available by that point.
 	if (recording_enabled() &&
 	    !m_rxrecorder.isRecording()) {
-		if (start_recording(
-		        m_rxrecorder,
-		        m_rxrecordingpath,
-		        m_rxrecordinguri,
-		        QStringLiteral("RX")
-		    )) {
-			log_recording(
-				QStringLiteral("%1 RX recording started: %2")
-					.arg(m_mode)
-					.arg(m_rxrecordingpath)
-			);
-		}
-		else {
-			log_recording(
-				QStringLiteral("%1 RX recording failed: %2")
-					.arg(m_mode)
-					.arg(m_rxrecorder.errorString())
-			);
-			m_rxrecordingpath.clear();
-			m_rxrecordinguri.clear();
-		}
+		m_rxrecordingpending = true;
 	}
 
 	if (m_out) {
@@ -297,8 +289,51 @@ void AudioEngine::start_playback()
 	}
 }
 
+void AudioEngine::start_rx_recording_if_needed()
+{
+	if (!m_rxrecordingpending) {
+		return;
+	}
+
+	m_rxrecordingpending = false;
+
+	if (!recording_enabled() ||
+	    m_rxrecorder.isRecording()) {
+		return;
+	}
+
+	const QString metadata =
+	    m_metadataProvider
+	        ? m_metadataProvider(false)
+	        : QString();
+
+	if (start_recording(
+	        m_rxrecorder,
+	        m_rxrecordingpath,
+	        m_rxrecordinguri,
+	        QStringLiteral("RX"),
+	        metadata
+	    )) {
+		log_recording(
+			QStringLiteral("%1 RX recording started: %2")
+				.arg(m_mode)
+				.arg(m_rxrecordingpath)
+		);
+	}
+	else {
+		log_recording(
+			QStringLiteral("%1 RX recording failed: %2")
+				.arg(m_mode)
+				.arg(m_rxrecorder.errorString())
+		);
+		m_rxrecordingpath.clear();
+		m_rxrecordinguri.clear();
+	}
+}
+
 void AudioEngine::stop_playback()
 {
+	m_rxrecordingpending = false;
 	if (m_rxrecorder.isRecording()) {
 		m_rxrecorder.stop();
 		publish_recording(m_rxrecordinguri);
@@ -384,6 +419,8 @@ void AudioEngine::write(int16_t *pcm, size_t s)
 	if(m_agc){
 		process_audio(pcm, s);
 	}
+
+	start_rx_recording_if_needed();
 
 	if (m_rxrecorder.isRecording() &&
 	    !m_rxrecorder.appendPcm(pcm, s)) {
@@ -580,11 +617,48 @@ bool AudioEngine::recording_enabled() const
 	).toBool();
 }
 
+QString AudioEngine::sanitize_recording_label(
+    const QString &value
+) const
+{
+	QString result;
+	bool separatorPending = false;
+	const QString upper = value.trimmed().toUpper();
+
+	for (const QChar character : upper) {
+		const ushort code = character.unicode();
+		const bool asciiLetter = code >= static_cast<ushort>('A') && code <= static_cast<ushort>('Z');
+		const bool asciiDigit = code >= static_cast<ushort>('0') && code <= static_cast<ushort>('9');
+
+		if (asciiLetter || asciiDigit) {
+			if (separatorPending && !result.isEmpty()) {
+				result.append(QLatin1Char('_'));
+			}
+			result.append(character);
+			separatorPending = false;
+		}
+		else if (!result.isEmpty()) {
+			separatorPending = true;
+		}
+	}
+
+	if (result.size() > 78) {
+		result.truncate(78);
+	}
+
+	while (result.endsWith(QLatin1Char('_'))) {
+		result.chop(1);
+	}
+
+	return result;
+}
+
 bool AudioEngine::start_recording(
     WavRecorder &recorder,
     QString &displayPath,
     QString &contentUri,
-    const QString &direction
+    const QString &direction,
+    const QString &metadata
 ) const
 {
 	QString safeDirection = direction.trimmed().toUpper();
@@ -594,12 +668,27 @@ bool AudioEngine::start_recording(
 		safeDirection = QStringLiteral("AUDIO");
 	}
 
+	QString labelSource =
+	    m_mode +
+	    QStringLiteral("_") +
+	    safeDirection;
+
+	if (!metadata.trimmed().isEmpty()) {
+		labelSource += QStringLiteral("_") + metadata;
+	}
+
+	QString recordingLabel = sanitize_recording_label(labelSource);
+
+	if (recordingLabel.isEmpty()) {
+		recordingLabel = safeDirection;
+	}
+
 	const QString fileName =
 	    QDateTime::currentDateTime().toString(
 	        QStringLiteral("yyyyMMdd-HHmmss-zzz")
 	    ) +
 	    QStringLiteral("_") +
-	    safeDirection +
+	    recordingLabel +
 	    QStringLiteral(".wav");
 
 	QSettings settings(
@@ -696,7 +785,7 @@ bool AudioEngine::start_recording(
 	}
 #endif
 
-	displayPath = make_recording_path(safeDirection);
+	displayPath = make_recording_path(fileName);
 	return recorder.start(displayPath, 8000, 1, 16);
 }
 
@@ -735,7 +824,7 @@ void AudioEngine::publish_recording(QString &contentUri) const
 }
 
 QString AudioEngine::make_recording_path(
-    const QString &direction
+    const QString &fileName
 ) const
 {
 	QString basePath;
@@ -779,21 +868,6 @@ QString AudioEngine::make_recording_path(
 		qWarning() << "Could not create recording directory:"
 		           << recordingDirectory;
 	}
-
-	QString safeDirection = direction.trimmed().toUpper();
-
-	if (safeDirection != QStringLiteral("RX") &&
-	    safeDirection != QStringLiteral("TX")) {
-		safeDirection = QStringLiteral("AUDIO");
-	}
-
-	const QString fileName =
-	    QDateTime::currentDateTime().toString(
-	        QStringLiteral("yyyyMMdd-HHmmss-zzz")
-	    ) +
-	    QStringLiteral("_") +
-	    safeDirection +
-	    QStringLiteral(".wav");
 
 	return QDir(recordingDirectory).filePath(fileName);
 }

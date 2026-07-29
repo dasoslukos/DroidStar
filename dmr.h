@@ -46,6 +46,7 @@ private slots:
 	void send_frame();
 	void mmdvm_direct_connect();
 private:
+	QString recording_metadata(bool tx) const override;
 	uint32_t m_essid;
 	QString m_password;
 	QString m_lat;

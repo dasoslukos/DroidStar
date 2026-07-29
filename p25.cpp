@@ -100,6 +100,8 @@ void P25::process_udp()
 		{
 			m_modeinfo.stream_state = STREAM_NEW;
 			m_modeinfo.ts = QDateTime::currentMSecsSinceEpoch();
+			m_modeinfo.srcid = 0;
+			m_modeinfo.dstid = 0;
 			if(!m_tx && !m_rxtimer->isActive() ){
 				m_rxcodecq.clear();
 				m_audio->start_playback();
