@@ -122,6 +122,15 @@ ApplicationWindow {
 		}
 		AboutTab{}
 	}
+    RecordingLibraryModel {
+        id: recordingLibrary
+
+        Component.onCompleted: {
+            refresh()
+            console.log(diagnosticSummary())
+        }
+    }
+
     DroidStar {
         id: droidstar
     }
