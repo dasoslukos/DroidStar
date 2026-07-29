@@ -155,25 +155,81 @@ void AudioEngine::init()
 void AudioEngine::start_capture()
 {
 	m_audioinq.clear();
+
 	if(m_in != nullptr){
 		m_indev = m_in->start();
-		if(MACHAK) m_srm = (float)(m_in->format().sampleRate()) / 8000.0;
-		connect(m_indev, SIGNAL(readyRead()), SLOT(input_data_received()));
+
+		if(m_indev == nullptr){
+			qWarning() << "Could not start microphone capture";
+			return;
+		}
+
+		if(MACHAK) {
+			m_srm =
+			    static_cast<float>(m_in->format().sampleRate()) /
+			    8000.0f;
+		}
+
+		if (!m_txrecorder.isRecording()) {
+			m_txrecordingpath =
+			    make_recording_path(QStringLiteral("TX"));
+
+			if (m_txrecorder.start(
+			        m_txrecordingpath,
+			        8000,
+			        1,
+			        16
+			    )) {
+				qDebug() << "TX recording started:"
+				         << m_txrecordingpath;
+			}
+			else {
+				qWarning() << "Could not start TX recording:"
+				           << m_txrecorder.errorString();
+				m_txrecordingpath.clear();
+			}
+		}
+
+		connect(
+		    m_indev,
+		    SIGNAL(readyRead()),
+		    SLOT(input_data_received())
+		);
 	}
 }
 
 void AudioEngine::stop_capture()
 {
 	if(m_in != nullptr){
-		m_indev->disconnect();
+		if(m_indev != nullptr){
+			m_indev->disconnect();
+		}
+
 		m_in->stop();
+	}
+
+	if (m_txrecorder.isRecording()) {
+		m_txrecorder.stop();
+
+		if (!m_txrecorder.errorString().isEmpty()) {
+			qWarning() << "TX recording stopped with an error:"
+			           << m_txrecorder.errorString();
+		}
+		else {
+			qDebug() << "TX recording completed:"
+			         << m_txrecordingpath
+			         << m_txrecorder.dataBytesWritten()
+			         << "PCM bytes";
+		}
+
+		m_txrecordingpath.clear();
 	}
 }
 
 void AudioEngine::start_playback()
 {
 	if (!m_rxrecorder.isRecording()) {
-		m_rxrecordingpath = make_rx_recording_path();
+		m_rxrecordingpath = make_recording_path(QStringLiteral("RX"));
 
 		if (m_rxrecorder.start(m_rxrecordingpath, 8000, 1, 16)) {
 			qDebug() << "RX recording started:" << m_rxrecordingpath;
@@ -295,6 +351,17 @@ uint16_t AudioEngine::read(int16_t *pcm, int s)
 				m_maxlevel = pcm[i];
 			}
 		}
+
+		if (m_txrecorder.isRecording() &&
+		    !m_txrecorder.appendPcm(
+		        pcm,
+		        static_cast<std::size_t>(s)
+		    )) {
+			qWarning() << "TX recording write failed:"
+			           << m_txrecorder.errorString();
+			m_txrecorder.stop();
+		}
+
 		return 1;
 	}
 	else if(m_in == nullptr){
@@ -323,6 +390,17 @@ uint16_t AudioEngine::read(int16_t *pcm)
 		if(pcm[i] > m_maxlevel){
 			m_maxlevel = pcm[i];
 		}
+	}
+
+	if (s > 0 &&
+	    m_txrecorder.isRecording() &&
+	    !m_txrecorder.appendPcm(
+	        pcm,
+	        static_cast<std::size_t>(s)
+	    )) {
+		qWarning() << "TX recording write failed:"
+		           << m_txrecorder.errorString();
+		m_txrecorder.stop();
 	}
 
 	return s;
@@ -419,7 +497,7 @@ void AudioEngine::process_audio(int16_t *pcm, size_t s)
 	}
 }
 
-QString AudioEngine::make_rx_recording_path() const
+QString AudioEngine::make_recording_path(const QString &direction) const
 {
 	QString basePath;
 
@@ -463,10 +541,19 @@ QString AudioEngine::make_rx_recording_path() const
 		           << recordingDirectory;
 	}
 
+	QString safeDirection = direction.trimmed().toUpper();
+
+	if (safeDirection != QStringLiteral("RX") &&
+	    safeDirection != QStringLiteral("TX")) {
+		safeDirection = QStringLiteral("AUDIO");
+	}
+
 	const QString fileName =
 	    QDateTime::currentDateTime().toString(
 	        QStringLiteral("yyyyMMdd-HHmmss-zzz")
-	    ) + QStringLiteral("_RX.wav");
+	    ) + QStringLiteral("_") +
+	    safeDirection +
+	    QStringLiteral(".wav");
 
 	return QDir(recordingDirectory).filePath(fileName);
 }
