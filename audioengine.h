@@ -31,6 +31,7 @@
 #endif
 #include <QAudioOutput>
 #include <QQueue>
+#include "wavrecorder.h"
 
 #define AUDIO_OUT 1
 #define AUDIO_IN  0
@@ -75,6 +76,8 @@ private:
 	QQueue<int16_t> m_audioinq;
 	uint16_t m_maxlevel;
 	bool m_agc;
+	WavRecorder m_rxrecorder;
+	QString m_rxrecordingpath;
 	float m_srm; // sample rate multiplier for macOS HACK
 
 	float m_audio_out_temp_buf[320];   //!< output of decoder
@@ -97,6 +100,7 @@ private:
 	float m_aout_gain;
 	float m_volume;
 
+	QString make_rx_recording_path() const;
 private slots:
 	void input_data_received();
 	void process_audio(int16_t *pcm, size_t s);

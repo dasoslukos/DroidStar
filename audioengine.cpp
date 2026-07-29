@@ -16,7 +16,17 @@
 */
 
 #include "audioengine.h"
+
+#include <QDateTime>
 #include <QDebug>
+#include <QDir>
+#include <QStandardPaths>
+
+#if defined(Q_OS_ANDROID)
+#include <QCoreApplication>
+#include <QJniObject>
+#endif
+
 #include <cmath>
 
 #if defined (Q_OS_MACOS) || defined(Q_OS_IOS)
@@ -162,6 +172,19 @@ void AudioEngine::stop_capture()
 
 void AudioEngine::start_playback()
 {
+	if (!m_rxrecorder.isRecording()) {
+		m_rxrecordingpath = make_rx_recording_path();
+
+		if (m_rxrecorder.start(m_rxrecordingpath, 8000, 1, 16)) {
+			qDebug() << "RX recording started:" << m_rxrecordingpath;
+		}
+		else {
+			qWarning() << "Could not start RX recording:"
+			           << m_rxrecorder.errorString();
+			m_rxrecordingpath.clear();
+		}
+	}
+
 	if (m_out) {
 		// Only start if stopped or suspended - IdleState and ActiveState mean already started
 		if (m_out->state() == QAudio::StoppedState || m_out->state() == QAudio::SuspendedState) {
@@ -172,6 +195,23 @@ void AudioEngine::start_playback()
 
 void AudioEngine::stop_playback()
 {
+	if (m_rxrecorder.isRecording()) {
+		m_rxrecorder.stop();
+
+		if (!m_rxrecorder.errorString().isEmpty()) {
+			qWarning() << "RX recording stopped with an error:"
+			           << m_rxrecorder.errorString();
+		}
+		else {
+			qDebug() << "RX recording completed:"
+			         << m_rxrecordingpath
+			         << m_rxrecorder.dataBytesWritten()
+			         << "PCM bytes";
+		}
+
+		m_rxrecordingpath.clear();
+	}
+
 	if (m_out) {
 		//m_outdev->reset();
 		m_out->reset();
@@ -222,6 +262,13 @@ void AudioEngine::write(int16_t *pcm, size_t s)
 */
 	if(m_agc){
 		process_audio(pcm, s);
+	}
+
+	if (m_rxrecorder.isRecording() &&
+	    !m_rxrecorder.appendPcm(pcm, s)) {
+		qWarning() << "RX recording write failed:"
+		           << m_rxrecorder.errorString();
+		m_rxrecorder.stop();
 	}
 
 	size_t l = m_outdev->write((const char *) pcm, sizeof(int16_t) * s);
@@ -370,6 +417,58 @@ void AudioEngine::process_audio(int16_t *pcm, size_t s)
 		pcm[i] = static_cast<int16_t>(*m_audio_out_temp_buf_p);
 		m_audio_out_temp_buf_p++;
 	}
+}
+
+QString AudioEngine::make_rx_recording_path() const
+{
+	QString basePath;
+
+#if defined(Q_OS_ANDROID)
+	const QJniObject context =
+	    QNativeInterface::QAndroidApplication::context();
+
+	if (context.isValid()) {
+		const QJniObject externalDirectory =
+		    context.callObjectMethod(
+		        "getExternalFilesDir",
+		        "(Ljava/lang/String;)Ljava/io/File;",
+		        static_cast<jobject>(nullptr)
+		    );
+
+		if (externalDirectory.isValid()) {
+			const QJniObject absolutePath =
+			    externalDirectory.callObjectMethod(
+			        "getAbsolutePath",
+			        "()Ljava/lang/String;"
+			    );
+
+			if (absolutePath.isValid()) {
+				basePath = absolutePath.toString();
+			}
+		}
+	}
+#endif
+
+	if (basePath.isEmpty()) {
+		basePath = QStandardPaths::writableLocation(
+		    QStandardPaths::AppDataLocation
+		);
+	}
+
+	const QString recordingDirectory =
+	    QDir(basePath).filePath(QStringLiteral("Recordings"));
+
+	if (!QDir().mkpath(recordingDirectory)) {
+		qWarning() << "Could not create recording directory:"
+		           << recordingDirectory;
+	}
+
+	const QString fileName =
+	    QDateTime::currentDateTime().toString(
+	        QStringLiteral("yyyyMMdd-HHmmss-zzz")
+	    ) + QStringLiteral("_RX.wav");
+
+	return QDir(recordingDirectory).filePath(fileName);
 }
 
 void AudioEngine::handleStateChanged(QAudio::State newState)
