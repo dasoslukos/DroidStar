@@ -82,11 +82,23 @@ ApplicationWindow {
 			}
 			text: qsTr("Log")
 		}
+        TabButton {
+            id: recordingsButton
+            padding: 6
+            background: Rectangle {
+                color: bar.currentIndex === 3
+                       ? "#7653b5"
+                       : "#353535"
+            }
+            text: qsTr("Record")
+            font.pixelSize: 11
+        }
+
 		TabButton {
 			id: hostsButton
 			padding: 10
 			background: Rectangle {
-				color: bar.currentIndex === 3 ? "steelblue" : "#353535"
+				color: bar.currentIndex === 4 ? "steelblue" : "#353535"
 			}
 			text: qsTr("Hosts")
 		}
@@ -94,7 +106,7 @@ ApplicationWindow {
 			id: aboutButton
 			padding: 10
 			background: Rectangle {
-				color: bar.currentIndex === 4 ? "steelblue" : "#353535"
+				color: bar.currentIndex === 5 ? "steelblue" : "#353535"
 			}
 			text: qsTr("About")
 		}
@@ -117,6 +129,10 @@ ApplicationWindow {
 		LogTab{
 			id: logTab
 		}
+        RecordingsTab {
+            id: recordingsTab
+            libraryModel: recordingLibrary
+        }
 		HostsTab{
 			id: hostsTab
 		}
@@ -127,12 +143,23 @@ ApplicationWindow {
 
         Component.onCompleted: {
             refresh()
-            console.log(diagnosticSummary())
         }
     }
 
     DroidStar {
         id: droidstar
+    }
+
+    Connections {
+        target: droidstar
+
+        function onUpdate_log(message) {
+            if (message.toLowerCase().indexOf(
+                    "recording saved:"
+                ) !== -1) {
+                recordingLibrary.refresh()
+            }
+        }
     }
 
     Connections {

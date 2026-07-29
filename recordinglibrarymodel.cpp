@@ -49,6 +49,11 @@ RecordingLibraryModel::RecordingLibraryModel(QObject *parent) :
 {
 }
 
+int RecordingLibraryModel::count() const
+{
+    return m_entries.size();
+}
+
 int RecordingLibraryModel::rowCount(
     const QModelIndex &parent
 ) const

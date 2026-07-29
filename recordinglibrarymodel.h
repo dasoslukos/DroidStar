@@ -8,7 +8,7 @@
 class RecordingLibraryModel : public QAbstractListModel
 {
     Q_OBJECT
-    Q_PROPERTY(int count READ rowCount NOTIFY countChanged)
+    Q_PROPERTY(int count READ count NOTIFY countChanged)
 
 public:
     enum RecordingRole {
@@ -34,6 +34,8 @@ public:
     Q_ENUM(RecordingRole)
 
     explicit RecordingLibraryModel(QObject *parent = nullptr);
+
+    int count() const;
 
     int rowCount(
         const QModelIndex &parent = QModelIndex()

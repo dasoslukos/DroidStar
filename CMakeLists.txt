@@ -100,6 +100,7 @@ qt_add_qml_module(DroidStar
     QML_FILES MainTab.qml
     QML_FILES SettingsTab.qml
     QML_FILES LogTab.qml
+    QML_FILES RecordingsTab.qml
     QML_FILES HostsTab.qml
     QML_FILES AboutTab.qml
 )
