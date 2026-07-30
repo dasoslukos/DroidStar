@@ -51,6 +51,7 @@ public:
     Q_INVOKABLE void refresh();
     Q_INVOKABLE QVariantMap get(int row) const;
     Q_INVOKABLE QString diagnosticSummary() const;
+    Q_INVOKABLE QString playbackSource(int row) const;
 
 signals:
     void countChanged();

@@ -4,6 +4,8 @@ import android.content.ContentResolver;
 import android.content.ContentUris;
 import android.database.Cursor;
 import java.io.InputStream;
+import java.io.File;
+import java.io.FileOutputStream;
 import org.json.JSONArray;
 import org.json.JSONObject;
 import android.content.ContentValues;
@@ -360,6 +362,107 @@ public final class RecordingStorage {
                 (((long)data[offset + 1] & 0xffL) << 8) |
                 (((long)data[offset + 2] & 0xffL) << 16) |
                 (((long)data[offset + 3] & 0xffL) << 24);
+    }
+
+    /*
+     * Copies a shared MediaStore recording into the app cache so Qt's
+     * FFmpeg media backend can play it through a normal file URL.
+     */
+    public static String prepareSharedRecordingForPlayback(
+            Context context,
+            String uriString,
+            String displayName
+    ) {
+        if (context == null ||
+                uriString == null ||
+                uriString.trim().isEmpty()) {
+            return "";
+        }
+
+        String safeName =
+                displayName == null
+                ? "droidstar-recording.wav"
+                : new File(displayName).getName();
+
+        safeName = safeName.replaceAll(
+                "[^A-Za-z0-9._-]",
+                "_"
+        );
+
+        if (safeName.isEmpty()) {
+            safeName = "droidstar-recording.wav";
+        }
+
+        File playbackDirectory = new File(
+                context.getCacheDir(),
+                "recording-playback"
+        );
+
+        if (!playbackDirectory.exists() &&
+                !playbackDirectory.mkdirs()) {
+            Log.e(
+                    TAG,
+                    "Could not create recording playback cache"
+            );
+            return "";
+        }
+
+        File targetFile = new File(
+                playbackDirectory,
+                safeName
+        );
+
+        Uri sourceUri = Uri.parse(uriString);
+
+        try (
+                InputStream input =
+                        context.getContentResolver()
+                                .openInputStream(sourceUri);
+                FileOutputStream output =
+                        new FileOutputStream(targetFile, false)
+        ) {
+            if (input == null) {
+                Log.e(
+                        TAG,
+                        "Could not open shared recording for playback"
+                );
+                return "";
+            }
+
+            byte[] buffer = new byte[64 * 1024];
+            int count;
+
+            while ((count = input.read(buffer)) >= 0) {
+                if (count > 0) {
+                    output.write(buffer, 0, count);
+                }
+            }
+
+            output.flush();
+
+            Log.d(
+                    TAG,
+                    "Prepared recording for playback: " +
+                            targetFile.getAbsolutePath()
+            );
+
+            return targetFile.getAbsolutePath();
+        }
+        catch (Exception exception) {
+            Log.e(
+                    TAG,
+                    "Could not prepare recording for playback",
+                    exception
+            );
+
+            try {
+                targetFile.delete();
+            }
+            catch (Exception ignored) {
+            }
+
+            return "";
+        }
     }
 
 }

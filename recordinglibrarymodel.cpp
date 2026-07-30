@@ -268,6 +268,76 @@ QString RecordingLibraryModel::diagnosticSummary() const
     return lines.join(QLatin1Char('\n'));
 }
 
+QString RecordingLibraryModel::playbackSource(int row) const
+{
+    if (row < 0 || row >= m_entries.size()) {
+        return {};
+    }
+
+    const RecordingEntry &entry = m_entries.at(row);
+
+    if (!entry.playbackUrl.startsWith(
+            QStringLiteral("content://"),
+            Qt::CaseInsensitive
+        )) {
+        return entry.playbackUrl;
+    }
+
+#if defined(Q_OS_ANDROID)
+    const QJniObject context =
+        QNativeInterface::QAndroidApplication::context();
+
+    if (!context.isValid()) {
+        qWarning()
+            << "Could not obtain Android context for playback";
+        return {};
+    }
+
+    const QJniObject javaUri =
+        QJniObject::fromString(entry.playbackUrl);
+
+    const QJniObject javaName =
+        QJniObject::fromString(entry.fileName);
+
+    const QJniObject result =
+        QJniObject::callStaticObjectMethod(
+            "org/dudetronics/droidstar/RecordingStorage",
+            "prepareSharedRecordingForPlayback",
+            "(Landroid/content/Context;"
+            "Ljava/lang/String;"
+            "Ljava/lang/String;)"
+            "Ljava/lang/String;",
+            context.object<jobject>(),
+            javaUri.object<jstring>(),
+            javaName.object<jstring>()
+        );
+
+    if (!result.isValid()) {
+        qWarning()
+            << "Recording playback cache call returned no result";
+        return {};
+    }
+
+    const QString localPath = result.toString();
+
+    if (localPath.isEmpty()) {
+        qWarning()
+            << "Could not prepare shared recording for playback:"
+            << entry.fileName;
+        return {};
+    }
+
+    qDebug().noquote()
+        << QStringLiteral(
+               "Recording playback source prepared: %1"
+           ).arg(localPath);
+
+    return QUrl::fromLocalFile(localPath).toString();
+#else
+    return {};
+#endif
+}
+
 void RecordingLibraryModel::loadSharedRecordings(
     QVector<RecordingEntry> &entries
 ) const

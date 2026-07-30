@@ -23,6 +23,7 @@ import org.dudetronics.droidstar
 
 ApplicationWindow {
     id: main
+    property int radioConnectionState: 0
 	visible: true
 	width: 340
 	height: 480
@@ -132,6 +133,8 @@ ApplicationWindow {
         RecordingsTab {
             id: recordingsTab
             libraryModel: recordingLibrary
+            radioConnectionState: main.radioConnectionState
+            pageActive: swiper.currentIndex === 3
         }
 		HostsTab{
 			id: hostsTab
@@ -508,6 +511,7 @@ ApplicationWindow {
 		}
 
 		function onConnect_status_changed(c) {
+            main.radioConnectionState = c
 			if(c === 0){
 				if(mainTab.buttonTX.tx){
 					mainTab.buttonTX.tx = false;

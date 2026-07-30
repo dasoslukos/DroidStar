@@ -1,15 +1,30 @@
 /*
-    DroidStar recording-library browser.
+    DroidStar recording-library browser and player.
 */
 
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import QtMultimedia
 
 Item {
     id: root
 
     property var libraryModel
+    property int radioConnectionState: 0
+    property bool pageActive: false
+    property int selectedIndex: -1
+    property var selectedEntry: ({})
+    property string selectedPlaybackSource: ""
+    property string playerError: ""
+
+    readonly property bool radioBusy:
+        radioConnectionState !== 0
+
+    readonly property bool hasSelection:
+        selectedIndex >= 0 &&
+        selectedEntry &&
+        selectedPlaybackSource.length > 0
 
     readonly property color pageColor: "#211f25"
     readonly property color cardColor: "#302c36"
@@ -19,6 +34,7 @@ Item {
     readonly property color txColor: "#8b5fc7"
     readonly property color secondaryText: "#c9c3d2"
     readonly property color mutedText: "#9e96aa"
+    readonly property color warningColor: "#d6a54b"
 
     function detailsText(
         talkgroup,
@@ -61,9 +77,165 @@ Item {
         return parts.join("  •  ")
     }
 
+    function formatPlayerTime(milliseconds) {
+        var value = Math.max(0, Number(milliseconds) || 0)
+        var totalSeconds = Math.floor(value / 1000)
+        var hours = Math.floor(totalSeconds / 3600)
+        var minutes = Math.floor(
+            (totalSeconds % 3600) / 60
+        )
+        var seconds = totalSeconds % 60
+
+        function twoDigits(number) {
+            return number < 10 ? "0" + number : "" + number
+        }
+
+        if (hours > 0) {
+            return hours + ":" +
+                   twoDigits(minutes) + ":" +
+                   twoDigits(seconds)
+        }
+
+        return minutes + ":" + twoDigits(seconds)
+    }
+
+    function selectedTotalDuration() {
+        if (libraryPlayer.duration > 0) {
+            return libraryPlayer.duration
+        }
+
+        if (selectedEntry &&
+            selectedEntry.durationMs) {
+            return selectedEntry.durationMs
+        }
+
+        return 0
+    }
+
+    function selectRecording(index) {
+        if (!libraryModel ||
+            index < 0 ||
+            index >= libraryModel.count) {
+            return
+        }
+
+        var entry = libraryModel.get(index)
+
+        if (!entry) {
+            playerError = qsTr(
+                "This recording could not be loaded."
+            )
+            return
+        }
+
+        var preparedSource =
+            libraryModel.playbackSource(index)
+
+        if (!preparedSource ||
+            preparedSource.length === 0) {
+            playerError = qsTr(
+                "Could not prepare this recording for playback."
+            )
+            return
+        }
+
+        var changed =
+            selectedIndex !== index ||
+            selectedPlaybackSource !== preparedSource
+
+        if (changed) {
+            stopPlayback()
+            libraryPlayer.source = ""
+            selectedEntry = entry
+            selectedIndex = index
+            selectedPlaybackSource = preparedSource
+            playerError = ""
+            libraryPlayer.source = preparedSource
+        }
+        else {
+            selectedIndex = index
+        }
+
+        recordingList.currentIndex = index
+    }
+
+    function togglePlayback() {
+        if (!hasSelection) {
+            return
+        }
+
+        if (radioBusy) {
+            playerError = qsTr(
+                "Disconnect the live radio before playing recordings."
+            )
+            return
+        }
+
+        playerError = ""
+
+        if (libraryPlayer.playbackState ===
+                MediaPlayer.PlayingState) {
+            libraryPlayer.pause()
+        }
+        else {
+            libraryPlayer.play()
+        }
+    }
+
+    function stopPlayback() {
+        libraryPlayer.stop()
+
+        if (libraryPlayer.seekable) {
+            libraryPlayer.position = 0
+        }
+    }
+
+    function clearSelection() {
+        stopPlayback()
+        libraryPlayer.source = ""
+        selectedEntry = ({})
+        selectedIndex = -1
+        selectedPlaybackSource = ""
+        playerError = ""
+        recordingList.currentIndex = -1
+    }
+
+    onRadioBusyChanged: {
+        if (radioBusy) {
+            stopPlayback()
+        }
+    }
+
+    onPageActiveChanged: {
+        if (pageActive) {
+            if (libraryModel) {
+                libraryModel.refresh()
+            }
+        }
+        else {
+            stopPlayback()
+        }
+    }
+
     onVisibleChanged: {
-        if (visible && libraryModel) {
-            libraryModel.refresh()
+        if (!visible) {
+            stopPlayback()
+        }
+    }
+
+    MediaPlayer {
+        id: libraryPlayer
+
+        audioOutput: AudioOutput {
+            id: libraryAudioOutput
+            volume: 1.0
+        }
+
+        onErrorOccurred: function(error, errorString) {
+            root.playerError =
+                errorString && errorString.length > 0
+                ? errorString
+                : qsTr("The recording could not be played.")
         }
     }
 
@@ -199,6 +371,278 @@ Item {
             }
         }
 
+        Rectangle {
+            Layout.fillWidth: true
+            implicitHeight: visible ? 38 : 0
+            visible: root.radioBusy
+            radius: 8
+            color: "#3a3022"
+            border.width: 1
+            border.color: root.warningColor
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 10
+                anchors.rightMargin: 10
+                spacing: 8
+
+                Text {
+                    text: "!"
+                    color: root.warningColor
+                    font.bold: true
+                    font.pixelSize: 16
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    text: qsTr(
+                        "Live radio has priority. Disconnect to play recordings."
+                    )
+                    color: "white"
+                    font.pixelSize: 11
+                    elide: Text.ElideRight
+                }
+            }
+        }
+
+        Rectangle {
+            id: playerPanel
+
+            Layout.fillWidth: true
+            implicitHeight: visible
+                            ? (root.width < 420 ? 154 : 136)
+                            : 0
+            visible: root.hasSelection
+            radius: 11
+            color: "#29252f"
+            border.width: 2
+            border.color: root.accentColor
+
+            ColumnLayout {
+                anchors.fill: parent
+                anchors.margins: 9
+                spacing: 4
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+
+                    Rectangle {
+                        Layout.preferredWidth: 36
+                        Layout.preferredHeight: 36
+                        radius: 18
+                        color: root.selectedEntry.direction === "TX"
+                               ? root.txColor
+                               : root.rxColor
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: root.selectedEntry.direction || "?"
+                            color: "white"
+                            font.pixelSize: 11
+                            font.bold: true
+                        }
+                    }
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 0
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: qsTr("Now Playing")
+                            color: root.accentColor
+                            font.pixelSize: 10
+                            font.bold: true
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: (root.selectedEntry.mode || "") +
+                                  "  " +
+                                  (root.selectedEntry.displayTitle || "")
+                            color: "white"
+                            font.pixelSize: 14
+                            font.bold: true
+                            elide: Text.ElideRight
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: (root.selectedEntry.dateText || "") +
+                                  "  " +
+                                  (root.selectedEntry.timeText || "")
+                            color: root.secondaryText
+                            font.pixelSize: 10
+                            elide: Text.ElideRight
+                        }
+                    }
+
+                    Button {
+                        id: clearButton
+
+                        text: qsTr("Clear")
+                        onClicked: root.clearSelection()
+
+                        contentItem: Text {
+                            text: clearButton.text
+                            color: root.secondaryText
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                            font.pixelSize: 10
+                        }
+
+                        background: Rectangle {
+                            radius: 7
+                            color: clearButton.down
+                                   ? "#45404c"
+                                   : "#38333e"
+                            border.width: 1
+                            border.color: "#51495a"
+                        }
+                    }
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 7
+
+                    Text {
+                        text: root.formatPlayerTime(
+                            libraryPlayer.position
+                        )
+                        color: root.secondaryText
+                        font.pixelSize: 10
+                    }
+
+                    Slider {
+                        id: positionSlider
+
+                        Layout.fillWidth: true
+                        from: 0
+                        to: Math.max(
+                            1,
+                            root.selectedTotalDuration()
+                        )
+                        enabled: root.hasSelection &&
+                                 !root.radioBusy &&
+                                 libraryPlayer.seekable
+
+                        onMoved: {
+                            if (libraryPlayer.seekable) {
+                                libraryPlayer.position = value
+                            }
+                        }
+
+                        Binding {
+                            target: positionSlider
+                            property: "value"
+                            value: libraryPlayer.position
+                            when: !positionSlider.pressed
+                        }
+                    }
+
+                    Text {
+                        text: root.formatPlayerTime(
+                            root.selectedTotalDuration()
+                        )
+                        color: root.secondaryText
+                        font.pixelSize: 10
+                    }
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 7
+
+                    Button {
+                        id: playPauseButton
+
+                        Layout.preferredWidth: 84
+                        text: libraryPlayer.playbackState ===
+                              MediaPlayer.PlayingState
+                              ? qsTr("Pause")
+                              : qsTr("Play")
+                        enabled: root.hasSelection &&
+                                 !root.radioBusy
+                        onClicked: root.togglePlayback()
+
+                        contentItem: Text {
+                            text: playPauseButton.text
+                            color: playPauseButton.enabled
+                                   ? "white"
+                                   : root.mutedText
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                            font.pixelSize: 12
+                            font.bold: true
+                        }
+
+                        background: Rectangle {
+                            radius: 8
+                            color: playPauseButton.down
+                                   ? "#6f4faa"
+                                   : root.accentColor
+                            opacity: playPauseButton.enabled ? 1.0 : 0.45
+                        }
+                    }
+
+                    Button {
+                        id: stopButton
+
+                        Layout.preferredWidth: 70
+                        text: qsTr("Stop")
+                        enabled: root.hasSelection
+                        onClicked: root.stopPlayback()
+
+                        contentItem: Text {
+                            text: stopButton.text
+                            color: stopButton.enabled
+                                   ? "white"
+                                   : root.mutedText
+                            horizontalAlignment: Text.AlignHCenter
+                            verticalAlignment: Text.AlignVCenter
+                            font.pixelSize: 12
+                        }
+
+                        background: Rectangle {
+                            radius: 8
+                            color: stopButton.down
+                                   ? "#45404c"
+                                   : "#38333e"
+                            border.width: 1
+                            border.color: "#51495a"
+                        }
+                    }
+
+                    Item {
+                        Layout.fillWidth: true
+                    }
+
+                    Text {
+                        text: libraryPlayer.playbackState ===
+                              MediaPlayer.PlayingState
+                              ? qsTr("Playing")
+                              : libraryPlayer.playbackState ===
+                                MediaPlayer.PausedState
+                                ? qsTr("Paused")
+                                : qsTr("Ready")
+                        color: root.secondaryText
+                        font.pixelSize: 10
+                    }
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    visible: root.playerError.length > 0
+                    text: root.playerError
+                    color: "#ef9a9a"
+                    font.pixelSize: 10
+                    elide: Text.ElideRight
+                }
+            }
+        }
+
         Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
@@ -265,6 +709,7 @@ Item {
             spacing: 8
             boundsBehavior: Flickable.StopAtBounds
             cacheBuffer: 500
+            currentIndex: -1
 
             ScrollBar.vertical: ScrollBar {
                 policy: ScrollBar.AsNeeded
@@ -280,6 +725,7 @@ Item {
                 required property string direction
                 required property string dateText
                 required property string timeText
+                required property int durationMs
                 required property string durationText
                 required property string sizeText
                 required property string talkgroup
@@ -288,15 +734,16 @@ Item {
                 required property string reflector
                 required property string metadata
                 required property string location
+                required property string playbackUrl
 
                 width: recordingList.width
                 height: width < 420 ? 116 : 102
                 radius: 11
-                color: ListView.isCurrentItem
+                color: root.selectedIndex === index
                        ? root.selectedCardColor
                        : root.cardColor
-                border.width: ListView.isCurrentItem ? 2 : 1
-                border.color: ListView.isCurrentItem
+                border.width: root.selectedIndex === index ? 2 : 1
+                border.color: root.selectedIndex === index
                               ? root.accentColor
                               : "#48404f"
 
@@ -310,8 +757,12 @@ Item {
 
                 MouseArea {
                     anchors.fill: parent
-                    onClicked: recordingList.currentIndex =
-                               recordingCard.index
+
+                    onClicked: {
+                        root.selectRecording(
+                            recordingCard.index
+                        )
+                    }
                 }
 
                 RowLayout {
@@ -419,6 +870,16 @@ Item {
                             text: recordingCard.sizeText
                             color: root.secondaryText
                             font.pixelSize: 10
+                        }
+
+                        Text {
+                            Layout.alignment: Qt.AlignRight
+                            visible: root.selectedIndex ===
+                                     recordingCard.index
+                            text: qsTr("Selected")
+                            color: root.accentColor
+                            font.pixelSize: 9
+                            font.bold: true
                         }
                     }
                 }
