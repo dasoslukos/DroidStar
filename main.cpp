@@ -4,6 +4,7 @@
 #include <QIcon>
 #include <QQmlContext>
 #include "droidstar.h"
+#include "recordinglibrarymodel.h"
 
 int main(int argc, char *argv[])
 {
@@ -11,6 +12,7 @@ int main(int argc, char *argv[])
     QQuickStyle::setStyle("Fusion");
     app.setWindowIcon(QIcon(":/images/droidstar.png"));
     qmlRegisterType<DroidStar>("org.dudetronics.droidstar", 1, 0, "DroidStar");
+    qmlRegisterType<RecordingLibraryModel>("org.dudetronics.droidstar", 1, 0, "RecordingLibraryModel");
     QQmlApplicationEngine engine;
 #ifdef USE_FLITE
     engine.rootContext()->setContextProperty("USE_FLITE", QVariant(true));

@@ -35,6 +35,7 @@ qt_add_executable(DroidStar WIN32 MACOSX_BUNDLE
     dcs.cpp dcs.h
     dmr.cpp dmr.h
     droidstar.cpp droidstar.h
+    recordinglibrarymodel.cpp recordinglibrarymodel.h
     httpmanager.cpp httpmanager.h
     iax.cpp iax.h
     iaxdefines.h
@@ -99,6 +100,7 @@ qt_add_qml_module(DroidStar
     QML_FILES MainTab.qml
     QML_FILES SettingsTab.qml
     QML_FILES LogTab.qml
+    QML_FILES RecordingsTab.qml
     QML_FILES HostsTab.qml
     QML_FILES AboutTab.qml
 )
