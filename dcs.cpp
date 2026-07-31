@@ -70,8 +70,7 @@ void DCS::process_udp()
 		m_ping_timer = new QTimer();
 		connect(m_ping_timer, SIGNAL(timeout()), this, SLOT(send_ping()));
 		m_ping_timer->start(2000);
-		m_audio = new AudioEngine(m_audioin, m_audioout);
-		m_audio->init();
+		create_audio_engine();
 	}
 
 	if(m_modeinfo.status != CONNECTED_RW) return;

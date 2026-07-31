@@ -68,13 +68,15 @@ Item {
 	property alias modemBaudEdit: _modemBaudEdit
     property alias mmdvmBox: _mmdvmBox
     property alias debugBox: _debugBox
+    property alias recordAudio: _recordAudio
+    property alias recordingLocation: _recordingLocation
 
 	Flickable {
 		id: flickable
 		anchors.fill: parent
 		contentWidth: parent.width
-        contentHeight: _debugBox.y +
-                       _debugBox.height + 10
+        contentHeight: _recordingLocation.y +
+                       _recordingLocation.height + 10
 		flickableDirection: Flickable.VerticalFlick
 		clip: true
 		ScrollBar.vertical: ScrollBar {}
@@ -979,6 +981,47 @@ Item {
             text: qsTr("Debug output to stderr")
             onClicked:{
                 droidstar.set_debug(_debugBox.checked)
+            }
+        }
+
+        CheckBox {
+            id: _recordAudio
+            x: 10
+            y: 1190
+            width: parent.width
+            height: 25
+            text: qsTr("Record RX/TX audio")
+            onClicked: {
+                droidstar.set_recording_enabled(checked)
+            }
+        }
+
+        Text {
+            id: _recordingLocationLabel
+            x: 10
+            y: 1220
+            width: 130
+            height: 30
+            text: qsTr("Recording location")
+            color: "white"
+            verticalAlignment: Text.AlignVCenter
+        }
+
+        ComboBox {
+            id: _recordingLocation
+            x: 145
+            y: _recordingLocationLabel.y
+            width: parent.width - 155
+            height: 30
+            model: [
+                qsTr("Shared Music folder"),
+                qsTr("App storage")
+            ]
+
+            onActivated: {
+                droidstar.set_recording_location(
+                    currentIndex === 0 ? "shared" : "app"
+                )
             }
         }
 	}

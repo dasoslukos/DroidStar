@@ -385,6 +385,13 @@ ApplicationWindow {
 			settingsTab.ipv6.checked = droidstar.get_ipv6();
 			settingsTab.xrf2ref.checked = droidstar.get_xrf2ref();
 			settingsTab.toggleTX.checked = droidstar.get_toggletx();
+			settingsTab.recordAudio.checked =
+			    droidstar.get_recording_enabled();
+
+			settingsTab.recordingLocation.currentIndex =
+			    droidstar.get_recording_location() === "shared"
+			    ? 0
+			    : 1;
             if(droidstar.get_mode() === "REF"){
 				mainTab.comboHost.currentIndex = mainTab.comboHost.find(droidstar.get_ref_host());
             }

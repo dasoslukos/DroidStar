@@ -150,8 +150,7 @@ void YSF::process_udp()
 			m_rxtimer = new QTimer();
 			connect(m_rxtimer, SIGNAL(timeout()), this, SLOT(process_rx_data()));
 
-			m_audio = new AudioEngine(m_audioin, m_audioout);
-			m_audio->init();
+			create_audio_engine();
 
 			if(m_refname.left(3) == "FCS"){
 				char info[100U];
