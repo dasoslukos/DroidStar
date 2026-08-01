@@ -149,6 +149,16 @@ target_compile_definitions(DroidStar PRIVATE
     VERSION_NUMBER="${VERSION_NUMBER}"
 )
 
+if(MSVC)
+    set_source_files_properties(
+        mbe/ambe3600x2400.c
+        mbe/ambe3600x2450.c
+        mbe/mbelib.c
+        PROPERTIES
+        COMPILE_DEFINITIONS "_USE_MATH_DEFINES"
+    )
+endif()
+
 target_link_libraries(DroidStar PRIVATE
     Qt::Core
     Qt::Gui

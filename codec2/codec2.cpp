@@ -1690,8 +1690,10 @@ void CCodec2::lsp_to_lpc(float *lsp, float *ak, int order)
 	int i,j;
 	float xout1,xout2,xin1,xin2;
 	float *pw,*n1,*n2,*n3,*n4 = 0;
-	float freq[order];
-	float Wp[(order * 4) + 2];
+float freq[LPC_MAX_ORDER];
+float Wp[(LPC_MAX_ORDER * 4) + 2];
+
+assert(order > 0 && order <= LPC_MAX_ORDER);
 
 	/* convert from radians to the x=cos(w) domain */
 

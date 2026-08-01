@@ -69,11 +69,13 @@ int CQuantize::lspd_bits(int i)
 void CQuantize::encode_lspds_scalar(int indexes[], float lsp[], int order)
 {
 	int   i,k,m;
-	float lsp_hz[order];
-	float lsp__hz[order];
-	float dlsp[order];
-	float dlsp_[order];
-	float wt[order];
+float lsp_hz[LPC_MAX_ORDER];
+float lsp__hz[LPC_MAX_ORDER];
+float dlsp[LPC_MAX_ORDER];
+float dlsp_[LPC_MAX_ORDER];
+float wt[LPC_MAX_ORDER];
+
+assert(order > 0 && order <= LPC_MAX_ORDER);
 	const float *cb;
 	float se;
 
@@ -118,8 +120,10 @@ void CQuantize::encode_lspds_scalar(int indexes[], float lsp[], int order)
 void CQuantize::decode_lspds_scalar( float lsp_[], int indexes[], int   order)
 {
 	int   i,k;
-	float lsp__hz[order];
-	float dlsp_[order];
+float lsp__hz[LPC_MAX_ORDER];
+float dlsp_[LPC_MAX_ORDER];
+
+assert(order > 0 && order <= LPC_MAX_ORDER);
 	const float *cb;
 
 	for(i=0; i<order; i++)
@@ -492,8 +496,11 @@ float CQuantize::decode_Wo(C2CONST *c2const, int index, int bits)
 float CQuantize::speech_to_uq_lsps(float lsp[], float ak[], float Sn[], float w[], int m_pitch, int order)
 {
 	int   i, roots;
-	float Wn[m_pitch];
-	float R[order+1];
+float Wn[CODEC2_MAX_M_PITCH];
+float R[LPC_MAX_ORDER + 1];
+
+assert(m_pitch > 0 && m_pitch <= CODEC2_MAX_M_PITCH);
+assert(order > 0 && order <= LPC_MAX_ORDER);
 	float e, E;
 	Clpc lpc;
 
@@ -554,7 +561,9 @@ void CQuantize::encode_lsps_scalar(int indexes[], float lsp[], int order)
 {
 	int    i,k,m;
 	float  wt[1];
-	float  lsp_hz[order];
+float  lsp_hz[LPC_MAX_ORDER];
+
+assert(order > 0 && order <= LPC_MAX_ORDER);
 	const float *cb;
 	float se;
 
@@ -590,7 +599,9 @@ void CQuantize::encode_lsps_scalar(int indexes[], float lsp[], int order)
 void CQuantize::decode_lsps_scalar(float lsp[], int indexes[], int order)
 {
 	int    i,k;
-	float  lsp_hz[order];
+float  lsp_hz[LPC_MAX_ORDER];
+
+assert(order > 0 && order <= LPC_MAX_ORDER);
 	const float *cb;
 
 	for(i=0; i<order; i++)
@@ -740,8 +751,10 @@ int CQuantize::lpc_to_lsp(float *a, int order, float *freq, int nb, float delta)
 	float *pt;                	/* ptr used for cheb_poly_eval()
 				   whether P' or Q' 			*/
 	int roots=0;              	/* number of roots found 	        */
-	float Q[order + 1];
-	float P[order + 1];
+float Q[LPC_MAX_ORDER + 1];
+float P[LPC_MAX_ORDER + 1];
+
+assert(order > 0 && order <= LPC_MAX_ORDER);
 
 	flag = 1;
 	m = order/2;            	/* order of P'(z) & Q'(z) polynimials 	*/
@@ -870,7 +883,9 @@ float CQuantize::cheb_poly_eva(float *coef,float x,int order)
 {
 	int i;
 	float *t,*u,*v,sum;
-	float T[(order / 2) + 1];
+float T[(LPC_MAX_ORDER / 2) + 1];
+
+assert(order > 0 && order <= LPC_MAX_ORDER);
 
 	/* Initialise pointers */
 

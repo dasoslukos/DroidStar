@@ -159,7 +159,9 @@ void Clpc::levinson_durbin(
 	int order		/* order of the LPC analysis */
 )
 {
-	float a[order+1][order+1];
+float a[LPC_MAX_ORDER + 1][LPC_MAX_ORDER + 1];
+
+assert(order > 0 && order <= LPC_MAX_ORDER);
 	float sum, e, k;
 	int i,j;				/* loop variables */
 
@@ -273,7 +275,9 @@ void Clpc::find_aks(
 )
 {
 	float Wn[LPC_MAX_N];	/* windowed frame of Nsam speech samples */
-	float R[order+1];	/* order+1 autocorrelation values of Sn[] */
+float R[LPC_MAX_ORDER + 1]; /* autocorrelation values of Sn[] */
+
+assert(order > 0 && order <= LPC_MAX_ORDER);
 	int i;
 
 	assert(Nsam < LPC_MAX_N);

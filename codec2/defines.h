@@ -57,6 +57,7 @@
 /* Pitch estimation defines */
 
 #define M_PITCH_S  0.0400       /* pitch analysis window in s           */
+#define CODEC2_MAX_M_PITCH 640     /* maximum 40 ms window at 16 kHz       */
 #define P_MIN_S    0.0025		/* minimum pitch period in s            */
 #define P_MAX_S    0.0200		/* maximum pitch period in s            */
 #define MAXFACTORS 32			// e.g. an fft of length 128 has 4 factors

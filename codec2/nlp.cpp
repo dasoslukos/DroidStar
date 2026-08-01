@@ -287,7 +287,9 @@ float Cnlp::nlp(
 		m /= 2;
 		n /= 2;
 
-		float Sn8k[n];
+float Sn8k[PMAX_M];
+
+assert(n > 0 && n <= PMAX_M);
 		fdmdv_16_to_8(Sn8k, &snlp.Sn16k[FDMDV_OS_TAPS_16K], n);
 
 		/* Square latest input samples */
