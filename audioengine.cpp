@@ -866,7 +866,7 @@ QString AudioEngine::make_recording_path(
             }
         }
     }
-#elif defined(Q_OS_MACOS) || defined(Q_OS_LINUX)
+#elif defined(Q_OS_MACOS) || defined(Q_OS_LINUX) || defined(Q_OS_WIN)
     if (location == QStringLiteral("shared")) {
         basePath = QStandardPaths::writableLocation(
             QStandardPaths::MusicLocation

@@ -247,14 +247,14 @@ void DroidStar::obtain_asl_wt_creds()
 	postData.append("user=" + QUrl::toPercentEncoding(m_callsign.toUtf8()));
     postData.append("&pass=" + QUrl::toPercentEncoding(m_asl_password.toUtf8()));
 
-    connect(manager, &QNetworkAccessManager::finished, this, [=, this](QNetworkReply *reply) {
+    connect(manager, &QNetworkAccessManager::finished, this, [=](QNetworkReply *reply) {
         //qDebug() << "ASL login responded postData == " << postData;
         manager->disconnect();
 		if (reply->error() == QNetworkReply::NoError) {
             QUrl url(QString("https://www.allstarlink.org/portal/webtransceiver.php?node=%1").arg(m_refname));
 			QNetworkRequest request(url);
 			
-            connect(manager, &QNetworkAccessManager::finished, this, [=, this](QNetworkReply *reply) {
+            connect(manager, &QNetworkAccessManager::finished, this, [=](QNetworkReply *reply) {
                 bool token_found = false;
                 //qDebug() << "ASL webtransceiver responded...";
                 manager->disconnect();
