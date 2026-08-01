@@ -1,6 +1,38 @@
 cmake_minimum_required(VERSION 3.16)
 project(DroidStar VERSION 1.0 LANGUAGES C CXX)
 
+include(GNUInstallDirs)
+
+option(
+    DROIDSTAR_SYSTEM_PACKAGE
+    "Use private /opt installation paths for DEB and RPM packages"
+    OFF
+)
+
+if(DROIDSTAR_SYSTEM_PACKAGE AND UNIX AND NOT APPLE)
+    set(
+        CMAKE_INSTALL_BINDIR
+        "opt/droidstar-recording/bin"
+        CACHE STRING
+        "DroidStar packaged executable directory"
+        FORCE
+    )
+    set(
+        CMAKE_INSTALL_LIBDIR
+        "opt/droidstar-recording/lib"
+        CACHE STRING
+        "DroidStar packaged library directory"
+        FORCE
+    )
+    set(
+        CMAKE_INSTALL_DATADIR
+        "usr/share"
+        CACHE STRING
+        "DroidStar packaged shared-data directory"
+        FORCE
+    )
+endif()
+
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 if(IOS)
@@ -248,10 +280,197 @@ install(TARGETS DroidStar
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
-qt_generate_deploy_qml_app_script(
-    TARGET DroidStar
-    OUTPUT_SCRIPT deploy_script
-    NO_UNSUPPORTED_PLATFORM_ERROR
-    EXCLUDE_PLUGIN_TYPES sqldrivers
+if(UNIX AND NOT APPLE)
+    install(
+        FILES
+            packaging/linux/org.dudetronics.droidstar.desktop
+        DESTINATION
+            ${CMAKE_INSTALL_DATADIR}/applications
+    )
+
+    install(
+        FILES
+            images/droidstar.png
+        DESTINATION
+            ${CMAKE_INSTALL_DATADIR}/pixmaps
+        RENAME
+            org.dudetronics.droidstar.png
+    )
+
+    install(
+        FILES
+            packaging/linux/org.dudetronics.droidstar.metainfo.xml
+        DESTINATION
+            ${CMAKE_INSTALL_DATADIR}/metainfo
+    )
+
+    if(DROIDSTAR_SYSTEM_PACKAGE)
+        install(
+            PROGRAMS
+                packaging/linux/droidstar-recording
+            DESTINATION
+                usr/bin
+        )
+    endif()
+endif()
+
+if(UNIX AND NOT APPLE AND DROIDSTAR_SYSTEM_PACKAGE)
+    set(
+        DROIDSTAR_PACKAGE_ROOT
+        "opt/droidstar-recording"
+    )
+    set(
+        DROIDSTAR_PACKAGE_BIN_DIR
+        "${DROIDSTAR_PACKAGE_ROOT}/bin"
+    )
+    set(
+        DROIDSTAR_PACKAGE_LIB_DIR
+        "${DROIDSTAR_PACKAGE_ROOT}/lib"
+    )
+    set(
+        DROIDSTAR_PACKAGE_PLUGINS_DIR
+        "${DROIDSTAR_PACKAGE_ROOT}/plugins"
+    )
+    set(
+        DROIDSTAR_PACKAGE_QML_DIR
+        "${DROIDSTAR_PACKAGE_ROOT}/qml"
+    )
+
+    # Qt's Linux deployment scan can miss SerialPort because the
+    # installed executable already has its final relative RUNPATH.
+    # Install this directly linked imported Qt module explicitly.
+    install(
+        IMPORTED_RUNTIME_ARTIFACTS
+            Qt6::SerialPort
+        LIBRARY DESTINATION
+            "${DROIDSTAR_PACKAGE_LIB_DIR}"
+    )
+
+    set(
+        droidstar_system_deploy_script
+        "${CMAKE_CURRENT_BINARY_DIR}/deploy_DroidStar_system.cmake"
+    )
+
+    file(
+        GENERATE
+        OUTPUT
+            "${droidstar_system_deploy_script}"
+        CONTENT
+"set(QT_DEPLOY_BIN_DIR \"${DROIDSTAR_PACKAGE_BIN_DIR}\")
+set(QT_DEPLOY_LIB_DIR \"${DROIDSTAR_PACKAGE_LIB_DIR}\")
+set(QT_DEPLOY_PLUGINS_DIR \"${DROIDSTAR_PACKAGE_PLUGINS_DIR}\")
+set(QT_DEPLOY_QML_DIR \"${DROIDSTAR_PACKAGE_QML_DIR}\")
+set(
+    QT_DEPLOY_TRANSLATIONS_DIR
+    \"${DROIDSTAR_PACKAGE_ROOT}/translations\"
 )
-install(SCRIPT ${deploy_script})
+
+include(\"${QT_DEPLOY_SUPPORT}\")
+
+qt_deploy_qml_imports(
+    TARGET DroidStar
+    QML_DIR \"${DROIDSTAR_PACKAGE_QML_DIR}\"
+    PLUGINS_FOUND qml_plugins_found
+)
+
+qt_deploy_runtime_dependencies(
+    EXECUTABLE
+        \"\${QT_DEPLOY_BIN_DIR}/$<TARGET_FILE_NAME:DroidStar>\"
+    ADDITIONAL_MODULES
+        \${qml_plugins_found}
+    BIN_DIR
+        \"${DROIDSTAR_PACKAGE_BIN_DIR}\"
+    LIB_DIR
+        \"${DROIDSTAR_PACKAGE_LIB_DIR}\"
+    PLUGINS_DIR
+        \"${DROIDSTAR_PACKAGE_PLUGINS_DIR}\"
+    QML_DIR
+        \"${DROIDSTAR_PACKAGE_QML_DIR}\"
+    GENERATE_QT_CONF
+    EXCLUDE_PLUGIN_TYPES
+        sqldrivers
+        egldeviceintegrations
+)
+"
+    )
+
+    install(
+        SCRIPT
+            "${droidstar_system_deploy_script}"
+    )
+else()
+    qt_generate_deploy_qml_app_script(
+        TARGET DroidStar
+        OUTPUT_SCRIPT deploy_script
+        NO_UNSUPPORTED_PLATFORM_ERROR
+        EXCLUDE_PLUGIN_TYPES
+            sqldrivers
+            egldeviceintegrations
+    )
+
+    install(SCRIPT ${deploy_script})
+endif()
+
+if(UNIX AND NOT APPLE AND DROIDSTAR_SYSTEM_PACKAGE)
+    set(CPACK_PACKAGE_NAME "droidstar-recording")
+    set(CPACK_PACKAGE_VENDOR "FoxThings")
+    set(
+        CPACK_PACKAGE_CONTACT
+        "dasoslukos <dasoslukos@gmail.com>"
+    )
+    set(
+        CPACK_PACKAGE_DESCRIPTION_SUMMARY
+        "Digital voice client with RX and TX recording"
+    )
+    set(
+        CPACK_PACKAGE_HOMEPAGE_URL
+        "https://github.com/dasoslukos/DroidStar"
+    )
+
+    set(CPACK_PACKAGE_VERSION "1.0.0")
+    set(CPACK_PACKAGING_INSTALL_PREFIX "/")
+    set(CPACK_VERBATIM_VARIABLES ON)
+
+    set(CPACK_GENERATOR "DEB;RPM")
+
+    set(
+        CPACK_DEBIAN_PACKAGE_MAINTAINER
+        "${CPACK_PACKAGE_CONTACT}"
+    )
+    set(
+        CPACK_DEBIAN_PACKAGE_VERSION
+        "1.0.0+git${VERSION_NUMBER}"
+    )
+    set(CPACK_DEBIAN_PACKAGE_RELEASE "1")
+    set(CPACK_DEBIAN_FILE_NAME "DEB-DEFAULT")
+    set(CPACK_DEBIAN_PACKAGE_SECTION "hamradio")
+    set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")
+    set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+
+    set(CPACK_RPM_PACKAGE_NAME "droidstar-recording")
+    set(CPACK_RPM_PACKAGE_VERSION "1.0.0")
+    set(
+        CPACK_RPM_PACKAGE_RELEASE
+        "1.git${VERSION_NUMBER}"
+    )
+    set(CPACK_RPM_PACKAGE_LICENSE "GPL-3.0-or-later")
+    set(
+        CPACK_RPM_PACKAGE_GROUP
+        "Applications/Communications"
+    )
+    set(CPACK_RPM_PACKAGE_AUTOREQPROV ON)
+
+    list(
+        APPEND
+        CPACK_RPM_EXCLUDE_FROM_AUTO_FILELIST_ADDITION
+        "/opt"
+        "/usr"
+        "/usr/bin"
+        "/usr/share"
+        "/usr/share/applications"
+        "/usr/share/metainfo"
+        "/usr/share/pixmaps"
+    )
+
+    include(CPack)
+endif()

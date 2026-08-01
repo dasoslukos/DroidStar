@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=DroidStar Recording
+GenericName=Digital Voice Client
+Comment=Digital voice client with RX and TX recording
+Exec=droidstar-recording
+Icon=org.dudetronics.droidstar
+Terminal=false
+Categories=Network;HamRadio;
+StartupNotify=true

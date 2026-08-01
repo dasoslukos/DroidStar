@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>org.dudetronics.droidstar</id>
+  <name>DroidStar Recording</name>
+  <summary>Digital voice client with RX and TX recording</summary>
+
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+
+  <developer id="com.github.dasoslukos">
+    <name>dasoslukos</name>
+  </developer>
+
+  <content_rating type="oars-1.1"/>
+
+  <description>
+    <p>
+      DroidStar is a digital voice client supporting multiple amateur-radio
+      digital voice networks and protocols.
+    </p>
+    <p>
+      This build includes separate per-transmission RX and TX WAV recording,
+      metadata-rich filenames, a recording library, and integrated playback.
+    </p>
+  </description>
+
+  <launchable type="desktop-id">
+    org.dudetronics.droidstar.desktop
+  </launchable>
+
+  <provides>
+    <binary>DroidStar</binary>
+  </provides>
+
+  <url type="homepage">
+    https://github.com/dasoslukos/DroidStar
+  </url>
+
+  <releases>
+    <release version="1.0.0" date="2026-07-31"/>
+  </releases>
+</component>
