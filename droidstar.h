@@ -105,6 +105,12 @@ public slots:
 	void set_usrtxt(const QString &usrtxt) { m_dstarusertxt = usrtxt; save_settings(); emit usrtxt_changed(usrtxt); }
 	void set_txtimeout(const QString &t) { m_txtimeout = t.simplified().toUInt(); save_settings();}
 	void set_toggletx(bool x) { m_toggletx = x; save_settings(); }
+	void set_recording_enabled(bool enabled)
+	{
+		m_recording_enabled = enabled;
+		save_settings();
+		m_settings->sync();
+	}
 	void set_xrf2ref(bool x) { m_xrf2ref = x; save_settings(); }
 	void set_ipv6(bool ipv6) { m_ipv6 = ipv6; save_settings(); }
 	void set_vocoder(QString vocoder) { m_vocoder = vocoder; }
@@ -207,6 +213,10 @@ public slots:
 	QString get_txtimeout() { return QString::number(m_txtimeout); }
 	QString get_error_text() { return m_errortxt; }
 	bool get_toggletx() { return m_toggletx; }
+	bool get_recording_enabled()
+	{
+		return m_recording_enabled;
+	}
 	bool get_ipv6() { return m_ipv6; }
 	bool get_xrf2ref() { return m_xrf2ref; }
 	QString get_local_hosts(){ return m_localhosts; }
@@ -318,6 +328,7 @@ private:
 	QString m_rptr2;
 	int m_txtimeout;
 	bool m_toggletx;
+	bool m_recording_enabled = false;
 	QString m_dstarusertxt;
 	QStringList m_hostsmodel;
 	QMap<QString, QString> m_hostmap;

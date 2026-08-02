@@ -68,13 +68,14 @@ Item {
 	property alias modemBaudEdit: _modemBaudEdit
     property alias mmdvmBox: _mmdvmBox
     property alias debugBox: _debugBox
+    property alias recordAudio: _recordAudio
 
 	Flickable {
 		id: flickable
 		anchors.fill: parent
 		contentWidth: parent.width
-        contentHeight: _debugBox.y +
-                       _debugBox.height + 10
+        contentHeight: _recordingPrivacyNote.y +
+                       _recordingPrivacyNote.implicitHeight + 10
 		flickableDirection: Flickable.VerticalFlick
 		clip: true
 		ScrollBar.vertical: ScrollBar {}
@@ -981,5 +982,34 @@ Item {
                 droidstar.set_debug(_debugBox.checked)
             }
         }
+
+        CheckBox {
+            id: _recordAudio
+            x: 10
+            y: 1190
+            width: parent.width
+            height: 25
+            text: qsTr("Record RX/TX audio")
+            onClicked: {
+                droidstar.set_recording_enabled(checked)
+            }
+        }
+
+        Text {
+            id: _recordingPrivacyNote
+            x: 20
+            y: _recordAudio.y + _recordAudio.height + 4
+            width: parent.width - 30
+            text: qsTr(
+                "Recordings stay local in DroidStar's folder " +
+                "in Files. DroidStar does not automatically " +
+                "upload or synchronize recordings."
+            )
+            color: "#b8b8b8"
+            wrapMode: Text.WordWrap
+            font.pixelSize: 11
+        }
+
+
 	}
 }

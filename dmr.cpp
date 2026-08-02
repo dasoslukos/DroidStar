@@ -16,6 +16,7 @@
 */
 
 #include <cstring>
+#include <QStringList>
 #include "dmr.h"
 #include "cgolay2087.h"
 #include "crs129.h"
@@ -44,6 +45,8 @@ DMR::DMR() :
 	m_txcc(1)
 {
     m_mode = "DMR";
+	m_txsrcid = 0;
+	m_txdstid = 0;
 	m_dmrcnt = 0;
 	m_flco = FLCO_GROUP;
 	m_attenuation = 5;
@@ -54,6 +57,22 @@ DMR::DMR() :
 
 DMR::~DMR()
 {
+}
+
+QString DMR::recording_metadata(bool tx) const
+{
+	if (!tx) {
+		return Mode::recording_metadata(false);
+	}
+
+	QStringList parts;
+	if (m_txdstid) {
+		parts.append(QStringLiteral("TG%1").arg(m_txdstid));
+	}
+	if (m_dmrid) {
+		parts.append(QStringLiteral("ID%1").arg(m_dmrid));
+	}
+	return parts.join(QLatin1Char('_'));
 }
 
 void DMR::set_dmr_params(uint8_t essid, QString password, QString lat, QString lon, QString location, QString desc, QString freq, QString url, QString swid, QString pkid, QString options)
@@ -355,8 +374,7 @@ void DMR::setup_connection()
 	connect(m_ping_timer, SIGNAL(timeout()), this, SLOT(send_ping()));
 	m_ping_timer->start(5000);
 	if (m_modeinfo.sw_vocoder_loaded) {
-		m_audio = new AudioEngine(m_audioin, m_audioout);
-		m_audio->init();
+		create_audio_engine();
 	}
 }
 
@@ -374,8 +392,7 @@ void DMR::mmdvm_direct_connect()
 		connect(m_txtimer, SIGNAL(timeout()), this, SLOT(transmit()));
 		m_rxtimer = new QTimer();
 		connect(m_rxtimer, SIGNAL(timeout()), this, SLOT(process_rx_data()));
-		m_audio = new AudioEngine(m_audioin, m_audioout);
-		m_audio->init();
+		create_audio_engine();
 	} else {
 		qDebug() << "No modem, cant do MMDVM_DIRECT";
 	}
