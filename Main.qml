@@ -23,6 +23,7 @@ import org.dudetronics.droidstar
 
 ApplicationWindow {
     id: main
+    property int radioConnectionState: 0
 	visible: true
 	width: 340
 	height: 480
@@ -82,11 +83,23 @@ ApplicationWindow {
 			}
 			text: qsTr("Log")
 		}
+        TabButton {
+            id: recordingsButton
+            padding: 6
+            background: Rectangle {
+                color: bar.currentIndex === 3
+                       ? "#7653b5"
+                       : "#353535"
+            }
+            text: qsTr("Record")
+            font.pixelSize: 11
+        }
+
 		TabButton {
 			id: hostsButton
 			padding: 10
 			background: Rectangle {
-				color: bar.currentIndex === 3 ? "steelblue" : "#353535"
+				color: bar.currentIndex === 4 ? "steelblue" : "#353535"
 			}
 			text: qsTr("Hosts")
 		}
@@ -94,7 +107,7 @@ ApplicationWindow {
 			id: aboutButton
 			padding: 10
 			background: Rectangle {
-				color: bar.currentIndex === 4 ? "steelblue" : "#353535"
+				color: bar.currentIndex === 5 ? "steelblue" : "#353535"
 			}
 			text: qsTr("About")
 		}
@@ -117,14 +130,45 @@ ApplicationWindow {
 		LogTab{
 			id: logTab
 		}
+        RecordingsTab {
+            id: recordingsTab
+            libraryModel: recordingLibrary
+            radioConnectionState: main.radioConnectionState
+            pageActive: swiper.currentIndex === 3
+        }
+
 		HostsTab{
 			id: hostsTab
 		}
 		AboutTab{}
 	}
+
+    RecordingLibraryModel {
+        id: recordingLibrary
+
+        Component.onCompleted: {
+            refresh()
+        }
+    }
+
+
     DroidStar {
         id: droidstar
     }
+
+    Connections {
+        target: droidstar
+
+        function onUpdate_log(message) {
+            if (message.toLowerCase().indexOf(
+                    "recording saved:"
+                ) !== -1) {
+                recordingLibrary.refresh()
+            }
+        }
+    }
+
+
 
     Connections {
         target: droidstar
@@ -468,6 +512,7 @@ ApplicationWindow {
 		}
 
 		function onConnect_status_changed(c) {
+            main.radioConnectionState = c
 			if(c === 0){
 				if(mainTab.buttonTX.tx){
 					mainTab.buttonTX.tx = false;

@@ -873,7 +873,7 @@ QString AudioEngine::make_recording_path(
         QStandardPaths::DocumentsLocation
     );
     relativeDirectory =
-        QStringLiteral("DroidStar/Recordings");
+        QStringLiteral("Recordings");
 #elif defined(Q_OS_MACOS)
     if (location == QStringLiteral("shared")) {
         basePath = QStandardPaths::writableLocation(
