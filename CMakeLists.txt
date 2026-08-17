@@ -4,6 +4,7 @@ project(DroidStar VERSION 1.0 LANGUAGES C CXX)
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 if(IOS)
+    enable_language(OBJCXX)
     find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Multimedia Network Quick QuickControls2)
 else()
     find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Multimedia Network Quick QuickControls2 SerialPort CorePrivate)
@@ -27,6 +28,7 @@ qt_add_executable(DroidStar WIN32 MACOSX_BUNDLE
     YSFConvolution.cpp YSFConvolution.h
     YSFFICH.cpp YSFFICH.h
     audioengine.cpp audioengine.h
+    wavrecorder.cpp wavrecorder.h
     cbptc19696.cpp cbptc19696.h
     cgolay2087.cpp cgolay2087.h
     chamming.cpp chamming.h
@@ -34,6 +36,7 @@ qt_add_executable(DroidStar WIN32 MACOSX_BUNDLE
     dcs.cpp dcs.h
     dmr.cpp dmr.h
     droidstar.cpp droidstar.h
+    recordinglibrarymodel.cpp recordinglibrarymodel.h
     httpmanager.cpp httpmanager.h
     iax.cpp iax.h
     iaxdefines.h
@@ -98,6 +101,7 @@ qt_add_qml_module(DroidStar
     QML_FILES MainTab.qml
     QML_FILES SettingsTab.qml
     QML_FILES LogTab.qml
+    QML_FILES RecordingsTab.qml
     QML_FILES HostsTab.qml
     QML_FILES AboutTab.qml
 )
@@ -154,6 +158,10 @@ if(APPLE)
         "-framework AVFoundation"
     )
     if(IOS)
+        target_sources(DroidStar PRIVATE
+            ios_audio_session.mm
+            ios_audio_session.h
+        )
         set_target_properties(DroidStar PROPERTIES
             XCODE_ATTRIBUTE_ASSETCATALOG_COMPILER_APPICON_NAME AppIcon
         )

@@ -97,3 +97,37 @@ http://pizzanbeer.net/
 The ipa file is the iOS package.
 
 
+
+<!-- IOS_RECORDING_RELEASE_START -->
+## iOS recording and playback
+
+The iOS build supports separate per-transmission RX and TX
+audio recording as 8 kHz, mono, signed 16-bit PCM WAV files.
+
+Recording filenames include available call metadata such as
+mode, direction, talkgroup, source ID, callsign, and reflector.
+DroidStar also includes an in-app recording library with
+playback, pause, stop, seeking, duration, size, and metadata
+display. Live radio audio always has priority: recording
+playback stops when connecting and remains unavailable while
+DroidStar is connected.
+
+### iOS storage and privacy
+
+Recordings are stored locally inside DroidStar's application
+sandbox:
+
+`On My iPhone/iPad > DroidStar > Recordings`
+
+DroidStar exposes this local Documents folder through the Files
+app. It does not enable iCloud Documents and does not
+automatically upload or synchronize recordings.
+
+Users may manually copy or move recordings to Nextcloud,
+iCloud Drive, or another Files provider. Local recordings may
+still be included in normal device backups according to the
+user's iOS backup settings.
+
+The recording feature was device-tested with DMR, P25, and
+NXDN audio on native arm64 iOS hardware.
+<!-- IOS_RECORDING_RELEASE_END -->

@@ -31,6 +31,9 @@
 #endif
 #include <QAudioOutput>
 #include <QQueue>
+#include "wavrecorder.h"
+
+#include <functional>
 
 #define AUDIO_OUT 1
 #define AUDIO_IN  0
@@ -40,7 +43,12 @@ class AudioEngine : public QObject
 	Q_OBJECT
 public:
 	//explicit AudioEngine(QObject *parent = nullptr);
-	AudioEngine(QString in, QString out);
+	AudioEngine(
+	QString in,
+	QString out,
+	QString mode,
+	std::function<QString(bool)> metadataProvider = {}
+);
 	~AudioEngine();
 	static QStringList discover_audio_devices(uint8_t d);
 	void init();
@@ -59,8 +67,11 @@ public:
 	uint16_t read(int16_t *);
 	uint16_t level() { return m_maxlevel; }
 signals:
+	void recording_log(QString message);
 
 private:
+	QString m_mode;
+	std::function<QString(bool)> m_metadataProvider;
 	QString m_outputdevice;
 	QString m_inputdevice;
 #if QT_VERSION < QT_VERSION_CHECK(6, 3, 0)
@@ -75,6 +86,13 @@ private:
 	QQueue<int16_t> m_audioinq;
 	uint16_t m_maxlevel;
 	bool m_agc;
+	bool m_rxrecordingpending;
+	WavRecorder m_rxrecorder;
+	QString m_rxrecordingpath;
+	QString m_rxrecordinguri;
+	WavRecorder m_txrecorder;
+	QString m_txrecordingpath;
+	QString m_txrecordinguri;
 	float m_srm; // sample rate multiplier for macOS HACK
 
 	float m_audio_out_temp_buf[320];   //!< output of decoder
@@ -97,6 +115,20 @@ private:
 	float m_aout_gain;
 	float m_volume;
 
+	bool recording_enabled() const;
+	bool start_recording(
+	    WavRecorder &recorder,
+	    QString &displayPath,
+	    QString &contentUri,
+	    const QString &direction,
+	    const QString &metadata
+	) const;
+
+	QString sanitize_recording_label(const QString &value) const;
+	void start_rx_recording_if_needed();
+	void publish_recording(QString &contentUri) const;
+	QString make_recording_path(const QString &fileName) const;
+	void log_recording(const QString &message);
 private slots:
 	void input_data_received();
 	void process_audio(int16_t *pcm, size_t s);

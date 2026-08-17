@@ -664,6 +664,10 @@ void DroidStar::save_settings()
 	m_settings->setValue("RPTR2", m_rptr2);
 	m_settings->setValue("TXTIMEOUT", m_txtimeout);
 	m_settings->setValue("TXTOGGLE", m_toggletx ? "true" : "false");
+	m_settings->setValue(
+	    "RECORDING_ENABLED",
+	    m_recording_enabled
+	);
 	m_settings->setValue("XRF2REF", m_xrf2ref ? "true" : "false");
 	m_settings->setValue("USRTXT", m_dstarusertxt);
 
@@ -727,6 +731,11 @@ void DroidStar::process_settings()
 	m_rptr2 = m_settings->value("RPTR2").toString().simplified();
 	m_txtimeout = m_settings->value("TXTIMEOUT", "300").toString().simplified().toUInt();
 	m_toggletx = (m_settings->value("TXTOGGLE", "true").toString().simplified() == "true") ? true : false;
+	m_recording_enabled = m_settings->value(
+	    "RECORDING_ENABLED",
+	    false
+	).toBool();
+
 	m_dstarusertxt = m_settings->value("USRTXT").toString().simplified();
 	m_xrf2ref = (m_settings->value("XRF2REF").toString().simplified() == "true") ? true : false;
 	m_localhosts = m_settings->value("LOCALHOSTS").toString();

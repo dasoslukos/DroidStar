@@ -105,8 +105,7 @@ void REF::process_udp()
 			m_ping_timer = new QTimer();
 			connect(m_ping_timer, SIGNAL(timeout()), this, SLOT(send_ping()));
 			m_ping_timer->start(1000);
-			m_audio = new AudioEngine(m_audioin, m_audioout);
-			m_audio->init();
+			create_audio_engine();
 
 			if(buf.data()[7] == 0x57){ //OKRW
 				m_modeinfo.status = CONNECTED_RW;
