@@ -4,11 +4,18 @@
 #include <QIcon>
 #include <QQmlContext>
 #include "droidstar.h"
+#if defined(Q_OS_IOS)
+#include "ios_audio_session.h"
+#endif
 #include "recordinglibrarymodel.h"
 
 int main(int argc, char *argv[])
 {
     QGuiApplication app(argc, argv);
+
+#if defined(Q_OS_IOS)
+    configure_ios_audio_session();
+#endif
     QQuickStyle::setStyle("Fusion");
     app.setWindowIcon(QIcon(":/images/droidstar.png"));
     qmlRegisterType<DroidStar>("org.dudetronics.droidstar", 1, 0, "DroidStar");

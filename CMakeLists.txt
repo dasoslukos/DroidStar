@@ -4,6 +4,7 @@ project(DroidStar VERSION 1.0 LANGUAGES C CXX)
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 if(IOS)
+    enable_language(OBJCXX)
     find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Multimedia Network Quick QuickControls2)
 else()
     find_package(Qt6 6.5 REQUIRED COMPONENTS Core Gui Multimedia Network Quick QuickControls2 SerialPort CorePrivate)
@@ -157,6 +158,10 @@ if(APPLE)
         "-framework AVFoundation"
     )
     if(IOS)
+        target_sources(DroidStar PRIVATE
+            ios_audio_session.mm
+            ios_audio_session.h
+        )
         set_target_properties(DroidStar PROPERTIES
             XCODE_ATTRIBUTE_ASSETCATALOG_COMPILER_APPICON_NAME AppIcon
         )
