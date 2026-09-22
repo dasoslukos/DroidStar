@@ -60,6 +60,17 @@ private:
 	uint32_t m_txsrcid;
 	uint32_t m_txdstid;
 	uint32_t m_txstreamid;
+
+	// Network RX stream arbitration. TGIF and other masters can deliver
+	// overlapping DMRD streams for the same talkgroup; keep one active
+	// stream until its audio has fully drained so AMBE frames never mix.
+	uint32_t m_rxstreamid;
+	uint32_t m_rxignoredstreamid;
+	uint32_t m_rxignoredframes;
+	uint32_t m_rxseqgaps;
+	uint8_t m_rxlastseq;
+	bool m_rxseqvalid;
+
 	uint8_t m_txslot;
 	uint8_t m_txcc;
 	uint8_t packet_size;
@@ -92,6 +103,7 @@ private:
 	void addDMRDataSync(uint8_t* data, bool duplex);
 	void addDMRAudioSync(uint8_t* data, bool duplex);
 	void setup_connection();
+	void release_rx_stream(const char *reason);
 };
 
 #endif // DMR_H

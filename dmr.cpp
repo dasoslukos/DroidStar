@@ -47,6 +47,12 @@ DMR::DMR() :
     m_mode = "DMR";
 	m_txsrcid = 0;
 	m_txdstid = 0;
+	m_rxstreamid = 0;
+	m_rxignoredstreamid = 0;
+	m_rxignoredframes = 0;
+	m_rxseqgaps = 0;
+	m_rxlastseq = 0;
+	m_rxseqvalid = false;
 	m_dmrcnt = 0;
 	m_flco = FLCO_GROUP;
 	m_attenuation = 5;
@@ -75,6 +81,25 @@ QString DMR::recording_metadata(bool tx) const
 	return parts.join(QLatin1Char('_'));
 }
 
+void DMR::release_rx_stream(const char *reason)
+{
+	if (m_rxstreamid != 0U) {
+		qDebug() << "DMR RX stream lock released:"
+		         << QString::number(m_rxstreamid, 16)
+		         << "reason:" << reason
+		         << "ignored competing frames:" << m_rxignoredframes
+		         << "sequence anomalies:" << m_rxseqgaps;
+	}
+
+	m_rxstreamid = 0U;
+	m_rxignoredstreamid = 0U;
+	m_rxignoredframes = 0U;
+	m_rxseqgaps = 0U;
+	m_rxlastseq = 0U;
+	m_rxseqvalid = false;
+	m_modeinfo.streamid = 0U;
+}
+
 void DMR::set_dmr_params(uint8_t essid, QString password, QString lat, QString lon, QString location, QString desc, QString freq, QString url, QString swid, QString pkid, QString options)
 {
 	if (essid){
@@ -98,16 +123,45 @@ void DMR::set_dmr_params(uint8_t essid, QString password, QString lat, QString l
 
 void DMR::process_udp()
 {
-	QByteArray buf;
-	QByteArray in;
-	QByteArray out;
-	QHostAddress sender;
-	quint16 senderPort;
-	CSHA256 sha256;
-	char buffer[400U];
+	if (!m_udp) {
+		return;
+	}
 
-	buf.resize(m_udp->pendingDatagramSize());
-	m_udp->readDatagram(buf.data(), buf.size(), &sender, &senderPort);
+	int drainedDatagrams = 0;
+
+	while (m_udp && m_udp->hasPendingDatagrams()) {
+		++drainedDatagrams;
+
+		QByteArray buf;
+		QByteArray in;
+		QByteArray out;
+		QHostAddress sender;
+		quint16 senderPort;
+		CSHA256 sha256;
+		char buffer[400U];
+
+		const qint64 pendingSize = m_udp->pendingDatagramSize();
+		if (pendingSize <= 0) {
+			break;
+		}
+
+		buf.resize(pendingSize);
+		const qint64 bytesRead =
+		    m_udp->readDatagram(
+		        buf.data(),
+		        buf.size(),
+		        &sender,
+		        &senderPort
+		    );
+
+		if (bytesRead <= 0) {
+			qWarning() << "DMR UDP readDatagram failed";
+			continue;
+		}
+
+		if (bytesRead != buf.size()) {
+			buf.resize(bytesRead);
+		}
 
     if(m_debug){
         QDebug debug = qDebug();
@@ -122,6 +176,7 @@ void DMR::process_udp()
 	// Handle MSTNAK - Master NAK (peer not recognized/rejected)
 	if((::memcmp(buf.data(), "MSTNAK", 6U) == 0)){
 		qDebug() << "Received MSTNAK from master - reconnecting...";
+		release_rx_stream("master NAK");
 		// Mark disconnected, stop timers and clean up socket
 		m_modeinfo.status = DISCONNECTED;
 		if(m_ping_timer && m_ping_timer->isActive()){
@@ -142,6 +197,7 @@ void DMR::process_udp()
 	// Handle MSTCL - Master close (server shutting down)
 	if((::memcmp(buf.data(), "MSTCL", 5U) == 0)){
 		qDebug() << "Received MSTCL from master - reconnecting...";
+		release_rx_stream("master close");
 		// Treat master close as a disconnect and attempt reconnect
 		m_modeinfo.status = DISCONNECTED;
 		if(m_ping_timer && m_ping_timer->isActive()){
@@ -237,8 +293,123 @@ void DMR::process_udp()
 	if((buf.size() == 11) && (::memcmp(buf.data(), "MSTPONG", 7U) == 0)){
 		m_modeinfo.count++;
 	}
-	if((buf.size() != 55) && ( (m_modeinfo.stream_state == STREAM_LOST) || (m_modeinfo.stream_state == STREAM_END) )){
+
+	// Do not let an unrelated control/ping packet collapse STREAM_END or
+	// STREAM_LOST while the final AMBE frames are still draining.
+	if((buf.size() != 55) &&
+	   (m_rxstreamid == 0U) &&
+	   ( (m_modeinfo.stream_state == STREAM_LOST) ||
+	     (m_modeinfo.stream_state == STREAM_END) )){
 		m_modeinfo.stream_state = STREAM_IDLE;
+	}
+
+	const bool isDmrd =
+	    (buf.size() == 55) &&
+	    (::memcmp(buf.constData(), "DMRD", 4U) == 0) &&
+	    (m_modeinfo.status == CONNECTED_RW);
+
+	if (isDmrd && !m_tx) {
+		const uint8_t *raw =
+		    reinterpret_cast<const uint8_t *>(buf.constData());
+
+		const uint32_t incomingStreamId =
+		    (static_cast<uint32_t>(raw[16]) << 24U) |
+		    (static_cast<uint32_t>(raw[17]) << 16U) |
+		    (static_cast<uint32_t>(raw[18]) << 8U) |
+		    static_cast<uint32_t>(raw[19]);
+
+		const uint32_t incomingSrcId =
+		    (static_cast<uint32_t>(raw[5]) << 16U) |
+		    (static_cast<uint32_t>(raw[6]) << 8U) |
+		    static_cast<uint32_t>(raw[7]);
+
+		const uint32_t incomingDstId =
+		    (static_cast<uint32_t>(raw[8]) << 16U) |
+		    (static_cast<uint32_t>(raw[9]) << 8U) |
+		    static_cast<uint32_t>(raw[10]);
+
+		const uint8_t flags = raw[15];
+		const bool isDataPacket = (flags & 0x20U) != 0U;
+		const bool isEot =
+		    isDataPacket && ((flags & 0x02U) != 0U);
+		const bool canStartStream =
+		    !isDataPacket || ((flags & 0x01U) != 0U);
+
+		// Acquire on a voice LC header or, if the header was lost, on the
+		// first voice packet. Stream ID 0 is treated as "no lock" so an
+		// unusual master using zero continues through the legacy path.
+		if ((m_rxstreamid == 0U) &&
+		    (incomingStreamId != 0U) &&
+		    canStartStream) {
+			m_rxstreamid = incomingStreamId;
+			m_rxignoredstreamid = 0U;
+			m_rxignoredframes = 0U;
+			m_rxseqgaps = 0U;
+			// Let the common sequence tracker below accept this first
+			// packet as the baseline without reporting a false gap.
+			m_rxlastseq = 0U;
+			m_rxseqvalid = false;
+
+			qDebug() << "DMR RX stream lock acquired:"
+			         << QString::number(m_rxstreamid, 16)
+			         << "src:" << incomingSrcId
+			         << "dst:" << incomingDstId
+			         << "seq:" << static_cast<unsigned int>(raw[4]);
+		}
+		else if ((m_rxstreamid != 0U) &&
+		         (incomingStreamId != m_rxstreamid)) {
+			++m_rxignoredframes;
+
+			if (incomingStreamId != m_rxignoredstreamid) {
+				m_rxignoredstreamid = incomingStreamId;
+				qDebug()
+				    << "DMR RX competing stream ignored:"
+				    << QString::number(incomingStreamId, 16)
+				    << "active:"
+				    << QString::number(m_rxstreamid, 16)
+				    << "src:" << incomingSrcId
+				    << "dst:" << incomingDstId;
+			}
+
+			continue;
+		}
+		else if ((m_rxstreamid == 0U) &&
+		         (incomingStreamId != 0U) &&
+		         isEot) {
+			qDebug() << "DMR RX stray EOT ignored for stream:"
+			         << QString::number(incomingStreamId, 16);
+			continue;
+		}
+
+		if ((m_rxstreamid != 0U) &&
+		    (incomingStreamId == m_rxstreamid)) {
+			const uint8_t seq = raw[4];
+
+			if (m_rxseqvalid) {
+				const uint8_t expected =
+				    static_cast<uint8_t>(m_rxlastseq + 1U);
+
+				if (seq != expected) {
+					++m_rxseqgaps;
+
+					// Avoid turning a very bad path into a log flood.
+					if ((m_rxseqgaps <= 10U) ||
+					    ((m_rxseqgaps % 50U) == 0U)) {
+						qDebug()
+						    << "DMR RX sequence anomaly:"
+						    << "expected"
+						    << static_cast<unsigned int>(expected)
+						    << "got"
+						    << static_cast<unsigned int>(seq)
+						    << "stream"
+						    << QString::number(m_rxstreamid, 16);
+					}
+				}
+			}
+
+			m_rxlastseq = seq;
+			m_rxseqvalid = true;
+		}
 	}
 	if((buf.size() == 55) &&
 		(::memcmp(buf.data(), "DMRD", 4U) == 0) &&
@@ -359,10 +530,18 @@ void DMR::process_udp()
         }
         debug << s;
     }
+	}
+
+	if (drainedDatagrams > 1) {
+		qDebug() << "DMR UDP drained"
+		         << drainedDatagrams
+		         << "datagrams in one readyRead";
+	}
 }
 
 void DMR::setup_connection()
 {
+	release_rx_stream("connection setup");
 	m_modeinfo.status = CONNECTED_RW;
 	//m_mbeenc->set_gain_adjust(2.5);
 	m_modeinfo.sw_vocoder_loaded = load_vocoder_plugin();
@@ -402,6 +581,7 @@ void DMR::hostname_lookup(QHostInfo i)
 {
 	qDebug() << "DMR::hostname_lookup() called; host=" << m_modeinfo.host << "addresses=" << i.addresses().size();
 	if (!i.addresses().isEmpty()) {
+		release_rx_stream("connection attempt");
 		// We're initiating a new connection attempt — mark as CONNECTING so the RPTACK
 		// handler will progress the handshake state machine.
 		m_modeinfo.status = CONNECTING;
@@ -459,6 +639,8 @@ void DMR::send_disconnect()
     if(m_mdirect){
                 return;
         }
+
+	release_rx_stream("disconnect");
 
 	QByteArray out;
 	out.append('R');
@@ -1167,8 +1349,12 @@ void DMR::process_rx_data()
 			m_audio->stop_playback();
 		}
 		m_rxwatchdog = 0;
-		m_modeinfo.streamid = 0;
+		const char *releaseReason =
+		    (m_modeinfo.stream_state == STREAM_END)
+		        ? "end of transmission"
+		        : "RX timeout";
 		m_rxcodecq.clear();
+		release_rx_stream(releaseReason);
 		qDebug() << "DMR playback stopped";
 		m_modeinfo.stream_state = STREAM_IDLE;
 		emit update_mode(MODE_IDLE);
