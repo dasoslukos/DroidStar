@@ -133,6 +133,9 @@ private slots:
 	void input_data_received();
 	void process_audio(int16_t *pcm, size_t s);
 	void handleStateChanged(QAudio::State newState);
+#if defined(Q_OS_IOS)
+	void handleApplicationStateChanged(Qt::ApplicationState state);
+#endif
 };
 
 #endif // AUDIOENGINE_H

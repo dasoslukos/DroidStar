@@ -24,6 +24,12 @@
 #include <QStandardPaths>
 #include <QSettings>
 
+#if defined(Q_OS_IOS)
+#include <QGuiApplication>
+#include <QTimer>
+#include "ios_audio_session.h"
+#endif
+
 #if defined(Q_OS_ANDROID)
 #include <QCoreApplication>
 #include <QJniObject>
@@ -60,6 +66,15 @@ AudioEngine::AudioEngine(
 	m_aout_max_buf_idx = 0;
 	m_aout_gain = 100;
 	m_volume = 1.0f;
+
+#if defined(Q_OS_IOS)
+	connect(
+	    qGuiApp,
+	    &QGuiApplication::applicationStateChanged,
+	    this,
+	    &AudioEngine::handleApplicationStateChanged
+	);
+#endif
 }
 
 AudioEngine::~AudioEngine()
@@ -281,9 +296,15 @@ void AudioEngine::start_playback()
 		m_rxrecordingpending = true;
 	}
 
+#if defined(Q_OS_IOS)
+	configure_ios_audio_session();
+#endif
+
 	if (m_out) {
-		// Only start if stopped or suspended - IdleState and ActiveState mean already started
-		if (m_out->state() == QAudio::StoppedState || m_out->state() == QAudio::SuspendedState) {
+		if (m_out->state() == QAudio::SuspendedState) {
+			m_out->resume();
+		}
+		else if (m_out->state() == QAudio::StoppedState) {
 			m_outdev = m_out->start();
 		}
 	}
@@ -369,9 +390,27 @@ void AudioEngine::stop_playback()
 	}
 
 	if (m_out) {
-		//m_outdev->reset();
+#if defined(Q_OS_IOS)
+		// Keep the iOS audio output alive between RX transmissions.
+		//
+		// Qt 6.8 stops the underlying audio path when QAudioSink::stop()
+		// is called. Once a transmission ends, that can leave DroidStar
+		// with no active background-audio activity and iOS may suspend
+		// the application before the next UDP transmission arrives.
+		//
+		// Leave the sink started on iOS. It can sit in IdleState between
+		// transmissions and resume when new decoded audio is written.
+		configure_ios_audio_session();
+
+		if (m_out->state() == QAudio::SuspendedState) {
+			m_out->resume();
+		}
+
+		qDebug() << "DroidStar: keeping iOS audio sink alive between RX transmissions";
+#else
 		m_out->reset();
 		m_out->stop();
+#endif
 	}
 }
 
@@ -905,18 +944,71 @@ void AudioEngine::handleStateChanged(QAudio::State newState)
 {
 	switch (newState) {
 	case QAudio::ActiveState:
-        //qDebug() << "AudioOut state active";
+		qDebug() << "AudioOut state active";
 		break;
+
 	case QAudio::SuspendedState:
-        //qDebug() << "AudioOut state suspended";
+		qDebug() << "AudioOut state suspended";
+
+#if defined(Q_OS_IOS)
+		// Qt 6.8 may suspend the sink as the application leaves the
+		// foreground. For DroidStar receive audio, keep the native
+		// background audio session active and resume the existing sink.
+		if (QGuiApplication::applicationState() != Qt::ApplicationActive) {
+			configure_ios_audio_session();
+
+			QTimer::singleShot(0, this, [this]() {
+				if (m_out &&
+				    m_out->state() == QAudio::SuspendedState) {
+					qDebug()
+					    << "DroidStar: resuming iOS background audio sink";
+					m_out->resume();
+				}
+			});
+		}
+#endif
 		break;
+
 	case QAudio::IdleState:
-        //qDebug() << "AudioOut state idle";
+		qDebug() << "AudioOut state idle";
 		break;
+
 	case QAudio::StoppedState:
-        //qDebug() << "AudioOut state stopped";
+		qDebug() << "AudioOut state stopped"
+		         << "error:" << (m_out ? m_out->error() : QAudio::NoError);
 		break;
+
 	default:
 		break;
 	}
 }
+
+#if defined(Q_OS_IOS)
+void AudioEngine::handleApplicationStateChanged(
+    Qt::ApplicationState state
+)
+{
+	qDebug() << "DroidStar: iOS application state changed:" << state;
+
+	// Reassert the app-global AVAudioSession before iOS finishes moving
+	// us into the background. This is harmless when already active and
+	// protects against Qt Multimedia changing/deactivating the session.
+	if (state == Qt::ApplicationInactive ||
+	    state == Qt::ApplicationSuspended ||
+	    state == Qt::ApplicationActive) {
+		configure_ios_audio_session();
+	}
+
+	if (m_out &&
+	    m_out->state() == QAudio::SuspendedState) {
+		QTimer::singleShot(0, this, [this]() {
+			if (m_out &&
+			    m_out->state() == QAudio::SuspendedState) {
+				qDebug()
+				    << "DroidStar: resuming sink after app state change";
+				m_out->resume();
+			}
+		});
+	}
+}
+#endif
