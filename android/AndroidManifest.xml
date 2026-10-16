@@ -33,7 +33,7 @@
         android:requestLegacyExternalStorage="true">
 
         <activity
-            android:name="org.qtproject.qt.android.bindings.QtActivity"
+            android:name="org.dudetronics.droidstar.DroidStarActivity"
             android:configChanges="orientation|uiMode|screenLayout|screenSize|smallestScreenSize|layoutDirection|locale|fontScale|keyboard|keyboardHidden|navigation|mcc|mnc|density"
             android:exported="true"
             android:label="-- %%INSERT_APP_NAME%% --"
@@ -60,5 +60,21 @@
             android:exported="false"
             android:foregroundServiceType="mediaPlayback|microphone"
             android:stopWithTask="false"/>
+        <!-- Experimental physical PTT key diagnostic -->
+        <service
+            android:name="org.dudetronics.droidstar.PhysicalPttAccessibilityService"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
+            android:exported="true"
+            android:label="DroidStar PTT Diagnostic">
+
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/ptt_accessibility_config" />
+        </service>
+
     </application>
 </manifest>

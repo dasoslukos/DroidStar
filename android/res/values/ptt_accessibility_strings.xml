@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ptt_accessibility_description">Diagnostic for the F2 hardware PTT key. Does not transmit or read screen contents.</string>
+</resources>

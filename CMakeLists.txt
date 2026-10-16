@@ -155,7 +155,7 @@ endif()
 
 if(ANDROID)
     target_link_libraries(DroidStar PRIVATE Qt6::CorePrivate)
-    include(~/Android/Sdk/android_openssl/android_openssl.cmake)
+    include("${ANDROID_SDK_ROOT}/android_openssl/android_openssl.cmake")
     add_android_openssl_libraries(DroidStar)
     target_sources(DroidStar PUBLIC
         androidserialport.cpp androidserialport.h

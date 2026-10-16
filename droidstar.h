@@ -21,6 +21,10 @@
 #include <QObject>
 #include "mode.h"
 
+#ifdef Q_OS_ANDROID
+class QTimer;
+#endif
+
 class DroidStar : public QObject
 {
 	Q_OBJECT
@@ -161,6 +165,9 @@ public slots:
 	void schedule_reconnect(int ms);
 	void press_tx();
 	void release_tx();
+#ifdef Q_OS_ANDROID
+    void physicalPttEvent(bool down);
+#endif
 	void click_tx(bool);
     void m17_sms_pressed(QString sms) { emit m17_send_sms(sms.left(822)); }
 	void process_settings();
@@ -402,6 +409,8 @@ private:
 	uint32_t m_dmrColorCode;
 #ifdef Q_OS_ANDROID
     AndroidSerialPort *m_USBmonitor;
+    QTimer *m_physicalPttFailsafe = nullptr;
+    bool m_physicalPttPressed = false;
 #endif
 
 private slots:

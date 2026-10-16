@@ -20,6 +20,10 @@
 #ifdef Q_OS_ANDROID
 #include <QCoreApplication>
 #include <QJniObject>
+#include <QJniEnvironment>
+#include <QPointer>
+#include <QMetaObject>
+#include <QTimer>
 #include <QtCore/private/qandroidextras_p.h>
 #endif
 #include <QStandardPaths>
@@ -31,6 +35,22 @@
 #include <QSslSocket>
 #include <cstring>
 #include <fcntl.h>
+
+#ifdef Q_OS_ANDROID
+namespace {
+QPointer<DroidStar> s_physicalPttTarget;
+void JNICALL fromAndroidPhysicalPtt(JNIEnv *, jclass, jboolean down)
+{
+    QCoreApplication *app = QCoreApplication::instance();
+    if (!app)
+        return;
+    QMetaObject::invokeMethod(app, [down]() {
+        if (s_physicalPttTarget)
+            s_physicalPttTarget->physicalPttEvent(down == JNI_TRUE);
+    }, Qt::QueuedConnection);
+}
+} // namespace
+#endif
 
 DroidStar::DroidStar(QObject *parent) :
 	QObject(parent),
@@ -69,10 +89,34 @@ DroidStar::DroidStar(QObject *parent) :
 	qDebug() << "Kernel version: " << QSysInfo::kernelVersion();
     qDebug() << "Software version: " << VERSION_NUMBER;
     qDebug() << "OpenSSL: " << QSslSocket::supportsSsl();
+#ifdef Q_OS_ANDROID
+    s_physicalPttTarget = this;
+    m_physicalPttFailsafe = new QTimer(this);
+    m_physicalPttFailsafe->setSingleShot(true);
+    connect(m_physicalPttFailsafe, &QTimer::timeout, this, [this]() {
+        qWarning() << "DroidStarPTT: 12-second TX failsafe: releasing PTT";
+        physicalPttEvent(false);
+    });
+    const JNINativeMethod methods[] = {
+        {const_cast<char *>("nativePhysicalPtt"),
+         const_cast<char *>("(Z)V"),
+         reinterpret_cast<void *>(fromAndroidPhysicalPtt)}
+    };
+    QJniEnvironment env;
+    if (!env.registerNativeMethods(
+            "org/dudetronics/droidstar/PhysicalPttProbe", methods, 1)) {
+        qWarning() << "DroidStarPTT: JNI registration FAILED; hardware TX disabled";
+    } else {
+        qInfo() << "DroidStarPTT: JNI bridge registered";
+    }
+#endif
 }
 
 DroidStar::~DroidStar()
 {
+#ifdef Q_OS_ANDROID
+    s_physicalPttTarget = nullptr;
+#endif
 }
 
 #ifdef Q_OS_ANDROID
@@ -299,6 +343,10 @@ void DroidStar::obtain_asl_wt_creds()
 
 void DroidStar::process_connect()
 {
+#ifdef Q_OS_ANDROID
+    // Never leave hardware PTT active across a connection change.
+    physicalPttEvent(false);
+#endif
 	if(connect_status != Mode::DISCONNECTED){
         if(connect_status == Mode::TIMEOUT){
             m_errortxt = "Connection timed out";
@@ -1567,6 +1615,29 @@ void DroidStar::release_tx()
 {
 	emit tx_released();
 }
+
+#ifdef Q_OS_ANDROID
+void DroidStar::physicalPttEvent(bool down)
+{
+    if (down) {
+        if (m_physicalPttPressed)
+            return;
+        if (connect_status != Mode::CONNECTED_RW) {
+            qWarning() << "DroidStarPTT: DOWN ignored (not connected for TX)";
+            return;
+        }
+        m_physicalPttPressed = true;
+        m_physicalPttFailsafe->start(12000);
+        qInfo() << "DroidStarPTT: PHYSICAL TX DOWN";
+        press_tx();
+    } else if (m_physicalPttPressed) {
+        m_physicalPttPressed = false;
+        m_physicalPttFailsafe->stop();
+        qInfo() << "DroidStarPTT: PHYSICAL TX UP";
+        release_tx();
+    }
+}
+#endif
 
 void DroidStar::click_tx(bool tx)
 {

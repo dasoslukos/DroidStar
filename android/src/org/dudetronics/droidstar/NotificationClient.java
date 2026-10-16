@@ -26,6 +26,7 @@ public class NotificationClient extends Service
     private static final int NOTIFICATION_ID = 1001;
 
     private PowerManager.WakeLock wakeLock;
+    private PhysicalPttProbe physicalPttProbe;
 
     public static void startDroidStarService(Context context, String message)
     {
@@ -66,6 +67,8 @@ public class NotificationClient extends Service
         super.onCreate();
         createNotificationChannel(this);
         acquireWakeLock();
+        physicalPttProbe = new PhysicalPttProbe();
+        physicalPttProbe.register(this);
         Log.i(TAG, "Foreground audio service created");
     }
 
@@ -87,6 +90,10 @@ public class NotificationClient extends Service
     @Override
     public void onDestroy()
     {
+        if (physicalPttProbe != null) {
+            physicalPttProbe.unregister(this);
+            physicalPttProbe = null;
+        }
         releaseWakeLock();
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
