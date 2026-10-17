@@ -70,13 +70,15 @@ Item {
     property alias debugBox: _debugBox
     property alias recordAudio: _recordAudio
     property alias recordingLocation: _recordingLocation
+    property alias f400Ptt: _f400Ptt
 
 	Flickable {
 		id: flickable
 		anchors.fill: parent
 		contentWidth: parent.width
-        contentHeight: _recordingLocation.y +
-                       _recordingLocation.height + 10
+        contentHeight: Qt.platform.os === "android"
+            ? _hardwarePttHelp.y + _hardwarePttHelp.height + 20
+            : _recordingLocation.y + _recordingLocation.height + 10
 		flickableDirection: Flickable.VerticalFlick
 		clip: true
 		ScrollBar.vertical: ScrollBar {}
@@ -1023,6 +1025,43 @@ Item {
                     currentIndex === 0 ? "shared" : "app"
                 )
             }
+        }
+
+        Text {
+            id: _hardwarePttHeading
+            x: 10
+            y: _recordingLocation.y + _recordingLocation.height + 18
+            width: parent.width - 20
+            height: 28
+            visible: Qt.platform.os === "android"
+            color: "white"
+            font.bold: true
+            text: qsTr("Hardware PTT (Android)")
+        }
+
+        CheckBox {
+            id: _f400Ptt
+            x: 10
+            y: _hardwarePttHeading.y + _hardwarePttHeading.height
+            width: parent.width - 20
+            height: 34
+            visible: Qt.platform.os === "android"
+            text: qsTr("Enable UNIWA F400 physical PTT")
+            onClicked: droidstar.set_f400_ptt_enabled(checked)
+        }
+
+        Text {
+            id: _hardwarePttHelp
+            x: 10
+            y: _f400Ptt.y + _f400Ptt.height + 5
+            width: parent.width - 20
+            height: implicitHeight
+            visible: Qt.platform.os === "android"
+            color: "#cccccc"
+            wrapMode: Text.WordWrap
+            text: qsTr("For UNIWA F400-family radios only. Uses vendor PTT "
+                       + "broadcasts. Screen-off operation verified on F400. "
+                       + "Experimental; disabled by default.")
         }
 	}
 }

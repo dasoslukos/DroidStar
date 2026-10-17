@@ -167,6 +167,8 @@ public slots:
 	void release_tx();
 #ifdef Q_OS_ANDROID
     void physicalPttEvent(bool down);
+    void set_f400_ptt_enabled(bool enabled);
+    bool get_f400_ptt_enabled() const { return m_f400PttEnabled; }
 #endif
 	void click_tx(bool);
     void m17_sms_pressed(QString sms) { emit m17_send_sms(sms.left(822)); }
@@ -411,6 +413,7 @@ private:
     AndroidSerialPort *m_USBmonitor;
     QTimer *m_physicalPttFailsafe = nullptr;
     bool m_physicalPttPressed = false;
+    bool m_f400PttEnabled = false;
 #endif
 
 private slots:

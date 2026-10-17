@@ -796,6 +796,9 @@ void DroidStar::process_settings()
 	m_rptr2 = m_settings->value("RPTR2").toString().simplified();
 	m_txtimeout = m_settings->value("TXTIMEOUT", "300").toString().simplified().toUInt();
 	m_toggletx = (m_settings->value("TXTOGGLE", "true").toString().simplified() == "true") ? true : false;
+#ifdef Q_OS_ANDROID
+    m_f400PttEnabled = m_settings->value("F400_PTT_ENABLED", false).toBool();
+#endif
 	m_recording_enabled = m_settings->value(
 	    "RECORDING_ENABLED",
 	    false
@@ -835,6 +838,15 @@ void DroidStar::process_settings()
 	m_modemTxInvert = (m_settings->value("ModemTxInvert", "true").toString().simplified() == "true") ? true : false;
 	m_modemRxInvert = (m_settings->value("ModemRxInvert", "false").toString().simplified() == "true") ? true : false;
 	m_modemPTTInvert = (m_settings->value("ModemPTTInvert", "false").toString().simplified() == "true") ? true : false;
+#ifdef Q_OS_ANDROID
+    // Also mirror this setting into Android SharedPreferences for the Service.
+    QJniObject::callStaticMethod<void>(
+        "org/dudetronics/droidstar/NotificationClient",
+        "setPhysicalPttEnabled",
+        "(Landroid/content/Context;Z)V",
+        QNativeInterface::QAndroidApplication::context(),
+        static_cast<jboolean>(m_f400PttEnabled ? JNI_TRUE : JNI_FALSE));
+#endif
 	emit update_settings();
 }
 
@@ -1617,9 +1629,36 @@ void DroidStar::release_tx()
 }
 
 #ifdef Q_OS_ANDROID
+void DroidStar::set_f400_ptt_enabled(bool enabled)
+{
+    if (m_f400PttEnabled == enabled)
+        return;
+
+    // Dropping the enable flag must never leave TX latched.
+    if (!enabled)
+        physicalPttEvent(false);
+
+    m_f400PttEnabled = enabled;
+    m_settings->setValue("F400_PTT_ENABLED", enabled);
+    m_settings->sync();
+
+    QJniObject::callStaticMethod<void>(
+        "org/dudetronics/droidstar/NotificationClient",
+        "setPhysicalPttEnabled",
+        "(Landroid/content/Context;Z)V",
+        QNativeInterface::QAndroidApplication::context(),
+        static_cast<jboolean>(enabled ? JNI_TRUE : JNI_FALSE));
+    qInfo() << "DroidStarPTT: F400 physical PTT"
+            << (enabled ? "enabled" : "disabled");
+}
+
 void DroidStar::physicalPttEvent(bool down)
 {
     if (down) {
+        if (!m_f400PttEnabled) {
+            qInfo() << "DroidStarPTT: PTT DOWN ignored (F400 PTT disabled)";
+            return;
+        }
         if (m_physicalPttPressed)
             return;
         if (connect_status != Mode::CONNECTED_RW) {

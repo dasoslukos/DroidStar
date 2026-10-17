@@ -13,6 +13,8 @@ import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.os.Build;
 import android.os.IBinder;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.PowerManager;
 import android.util.Log;
 
@@ -27,6 +29,42 @@ public class NotificationClient extends Service
 
     private PowerManager.WakeLock wakeLock;
     private PhysicalPttProbe physicalPttProbe;
+    private static final String PTT_PREFS = "DroidStarHardwarePtt";
+    private static final String PTT_ENABLED = "f400_enabled";
+    private static volatile NotificationClient activeInstance;
+
+    public static void setPhysicalPttEnabled(Context context, boolean enabled)
+    {
+        Context appContext = context.getApplicationContext();
+        appContext.getSharedPreferences(PTT_PREFS, Context.MODE_PRIVATE)
+                .edit().putBoolean(PTT_ENABLED, enabled).apply();
+
+        final NotificationClient service = activeInstance;
+        if (service != null) {
+            new Handler(Looper.getMainLooper()).post(new Runnable() {
+                @Override
+                public void run() {
+                    if (activeInstance == service) {
+                        service.applyPhysicalPttEnabled(enabled);
+                    }
+                }
+            });
+        }
+    }
+
+    private void applyPhysicalPttEnabled(boolean enabled)
+    {
+        if (enabled) {
+            if (physicalPttProbe == null) {
+                physicalPttProbe = new PhysicalPttProbe();
+            }
+            physicalPttProbe.register(this);
+        } else if (physicalPttProbe != null) {
+            physicalPttProbe.unregister(this);
+            physicalPttProbe = null;
+        }
+        Log.i(TAG, "F400 physical PTT " + (enabled ? "enabled" : "disabled"));
+    }
 
     public static void startDroidStarService(Context context, String message)
     {
@@ -67,8 +105,9 @@ public class NotificationClient extends Service
         super.onCreate();
         createNotificationChannel(this);
         acquireWakeLock();
-        physicalPttProbe = new PhysicalPttProbe();
-        physicalPttProbe.register(this);
+        activeInstance = this;
+        applyPhysicalPttEnabled(getSharedPreferences(PTT_PREFS, Context.MODE_PRIVATE)
+                .getBoolean(PTT_ENABLED, false));
         Log.i(TAG, "Foreground audio service created");
     }
 
@@ -90,10 +129,10 @@ public class NotificationClient extends Service
     @Override
     public void onDestroy()
     {
-        if (physicalPttProbe != null) {
-            physicalPttProbe.unregister(this);
-            physicalPttProbe = null;
+        if (activeInstance == this) {
+            activeInstance = null;
         }
+        applyPhysicalPttEnabled(false);
         releaseWakeLock();
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {

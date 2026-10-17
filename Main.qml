@@ -424,6 +424,9 @@ ApplicationWindow {
 			settingsTab.ipv6.checked = droidstar.get_ipv6();
 			settingsTab.xrf2ref.checked = droidstar.get_xrf2ref();
 			settingsTab.toggleTX.checked = droidstar.get_toggletx();
+            if (Qt.platform.os === "android") {
+                settingsTab.f400Ptt.checked = droidstar.get_f400_ptt_enabled();
+            }
 	settingsTab.recordAudio.checked =
 	    droidstar.get_recording_enabled();
 
