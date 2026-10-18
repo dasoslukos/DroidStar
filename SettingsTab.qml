@@ -71,13 +71,19 @@ Item {
     property alias recordAudio: _recordAudio
     property alias recordingLocation: _recordingLocation
     property alias f400Ptt: _f400Ptt
+    property alias customPttTx: _customPttTx
+    // B3: Qt QSettings saves the key on capture and restores it at startup.
+    property bool customPttLearning: false
+    property string customPttCapturedName: ""
+    property int customPttCapturedCode: -1
+    property int customPttCapturedScanCode: -1
 
 	Flickable {
 		id: flickable
 		anchors.fill: parent
 		contentWidth: parent.width
         contentHeight: Qt.platform.os === "android"
-            ? _hardwarePttHelp.y + _hardwarePttHelp.height + 20
+            ? _customPttHelp.y + _customPttHelp.height + 20
             : _recordingLocation.y + _recordingLocation.height + 10
 		flickableDirection: Flickable.VerticalFlick
 		clip: true
@@ -1062,6 +1068,107 @@ Item {
             text: qsTr("For UNIWA F400-family radios only. Uses vendor PTT "
                        + "broadcasts. Screen-off operation verified on F400. "
                        + "Experimental; disabled by default.")
+        }
+
+        Text {
+            id: _customPttHeading
+            x: 10
+            y: _hardwarePttHelp.y + _hardwarePttHelp.height + 18
+            width: parent.width - 20
+            height: 28
+            visible: Qt.platform.os === "android"
+            color: "white"
+            font.bold: true
+            text: qsTr("Custom Hardware Button (B4)")
+        }
+        Text {
+            id: _customPttResult
+            x: 10
+            y: _customPttHeading.y + _customPttHeading.height + 4
+            width: parent.width - 20
+            height: implicitHeight
+            visible: Qt.platform.os === "android"
+            color: settingsTab.customPttLearning ? "#ffda78" : "#dddddd"
+            wrapMode: Text.WordWrap
+            text: settingsTab.customPttLearning
+                ? qsTr("Listening: press a hardware button now...")
+                : settingsTab.customPttCapturedCode < 0
+                  ? qsTr("No button learned yet.")
+                  : settingsTab.customPttCapturedName
+                    + " (keyCode=" + settingsTab.customPttCapturedCode
+                    + ", scanCode=" + settingsTab.customPttCapturedScanCode + ")"
+        }
+        Button {
+            id: _learnCustomPttButton
+            x: 10
+            y: _customPttResult.y + _customPttResult.height + 8
+            width: Math.max(155, (parent.width - 30) * 0.60)
+            height: 36
+            visible: Qt.platform.os === "android"
+            text: settingsTab.customPttLearning ? qsTr("Cancel learning") : qsTr("Learn Button")
+            onClicked: {
+                if (settingsTab.customPttLearning) {
+                    droidstar.set_custom_ptt_learning(false)
+                    settingsTab.customPttLearning = false
+                } else {
+                    settingsTab.customPttLearning = droidstar.set_custom_ptt_learning(true)
+                }
+                settingsTab.customPttTx.checked = droidstar.get_custom_ptt_enabled()
+            }
+        }
+        Button {
+            id: _clearCustomPttButton
+            x: _learnCustomPttButton.x + _learnCustomPttButton.width + 5
+            y: _learnCustomPttButton.y
+            width: parent.width - x - 10
+            height: 36
+            visible: Qt.platform.os === "android"
+            enabled: settingsTab.customPttCapturedCode >= 0
+                     || settingsTab.customPttLearning
+            text: qsTr("Clear")
+            onClicked: {
+                droidstar.set_custom_ptt_learning(false)
+                settingsTab.customPttLearning = false
+                // B3: only display cleared state after persistent removal succeeds.
+                if (droidstar.clear_custom_ptt_mapping()) {
+                    settingsTab.customPttTx.checked = droidstar.get_custom_ptt_enabled()
+                    settingsTab.customPttCapturedCode = -1
+                    settingsTab.customPttCapturedScanCode = -1
+                    settingsTab.customPttCapturedName = ""
+                }
+            }
+        }
+        CheckBox {
+            id: _customPttTx
+            x: 10
+            y: _learnCustomPttButton.y + _learnCustomPttButton.height + 10
+            width: parent.width - 20
+            height: 34
+            visible: Qt.platform.os === "android"
+            enabled: !settingsTab.customPttLearning
+                     && settingsTab.customPttCapturedCode > 0
+            text: qsTr("Enable learned button as PTT (experimental)")
+            onClicked: {
+                if (!droidstar.set_custom_ptt_enabled(checked)) {
+                    checked = droidstar.get_custom_ptt_enabled()
+                }
+            }
+        }
+        Text {
+            id: _customPttHelp
+            x: 10
+            y: _customPttTx.y + _customPttTx.height + 6
+            width: parent.width - 20
+            height: implicitHeight
+            visible: Qt.platform.os === "android"
+            color: "#cccccc"
+            wrapMode: Text.WordWrap
+            text: qsTr("Learn any supported hardware key; save/restore per device. "
+                       + "Enable PTT above only after testing. "
+                       + "Requires DroidStar in the foreground and a TX-capable connection. "
+                       + "Releases on button-up, focus loss or 12-second timeout. "
+                       + "F3/SOS is blocked for TX. Disable UNIWA vendor PTT first. "
+                       + "Volume keys may still adjust volume.")
         }
 	}
 }

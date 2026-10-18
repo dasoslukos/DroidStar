@@ -120,6 +120,13 @@ ApplicationWindow {
 		y: 50
 		currentIndex: bar.currentIndex
 		interactive: false
+        onCurrentIndexChanged: {
+            // Don't leave a key-learning session armed outside Settings.
+            if (currentIndex !== 1 && settingsTab && settingsTab.customPttLearning) {
+                droidstar.set_custom_ptt_learning(false)
+                settingsTab.customPttLearning = false
+            }
+        }
 
 		MainTab{
 			id: mainTab
@@ -151,6 +158,21 @@ ApplicationWindow {
 
     DroidStar {
         id: droidstar
+    }
+
+    // Phase B2: foreground learning result only; never invokes TX.
+    Connections {
+        target: droidstar
+        function onCustomPttLearned(keyName, keyCode, scanCode) {
+            settingsTab.customPttCapturedName = keyName
+            settingsTab.customPttCapturedCode = keyCode
+            settingsTab.customPttCapturedScanCode = scanCode
+            settingsTab.customPttTx.checked = droidstar.get_custom_ptt_enabled()
+            settingsTab.customPttLearning = false
+        }
+        function onCustomPttLearningStopped() {
+            settingsTab.customPttLearning = false
+        }
     }
 
     Connections {
@@ -426,6 +448,11 @@ ApplicationWindow {
 			settingsTab.toggleTX.checked = droidstar.get_toggletx();
             if (Qt.platform.os === "android") {
                 settingsTab.f400Ptt.checked = droidstar.get_f400_ptt_enabled();
+                // B3: the Qt settings store is authoritative after restart.
+                settingsTab.customPttCapturedCode = droidstar.get_custom_ptt_keycode();
+                settingsTab.customPttCapturedScanCode = droidstar.get_custom_ptt_scancode();
+                settingsTab.customPttCapturedName = droidstar.get_custom_ptt_keyname();
+                settingsTab.customPttTx.checked = droidstar.get_custom_ptt_enabled();
             }
 	settingsTab.recordAudio.checked =
 	    droidstar.get_recording_enabled();

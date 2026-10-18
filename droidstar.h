@@ -68,6 +68,10 @@ signals:
     void dst_changed(QString);
     void debug_changed(bool);
     void update_devices();
+#ifdef Q_OS_ANDROID
+    void customPttLearned(QString keyName, int keyCode, int scanCode);
+    void customPttLearningStopped();
+#endif
 public slots:
 	void set_callsign(const QString &callsign) {  m_callsign = callsign.simplified(); save_settings(); }
 	void set_dmrtgid(const QString &dmrtgid) { m_dmr_destid = dmrtgid.simplified().toUInt(); save_settings(); }
@@ -167,6 +171,16 @@ public slots:
 	void release_tx();
 #ifdef Q_OS_ANDROID
     void physicalPttEvent(bool down);
+    bool set_custom_ptt_learning(bool enabled);
+    void customPttLearnedFromAndroid(int keyCode, int scanCode, const QString &keyName);
+    void customPttLearningStoppedFromAndroid();
+    bool clear_custom_ptt_mapping();
+    bool set_custom_ptt_enabled(bool enabled);
+    bool get_custom_ptt_enabled() const { return m_customPttEnabled; }
+    void customPttKeyEventFromAndroid(int keyCode, int scanCode, bool down);
+    int get_custom_ptt_keycode() const { return m_customPttKeyCode; }
+    int get_custom_ptt_scancode() const { return m_customPttScanCode; }
+    QString get_custom_ptt_keyname() const { return m_customPttKeyName; }
     void set_f400_ptt_enabled(bool enabled);
     bool get_f400_ptt_enabled() const { return m_f400PttEnabled; }
 #endif
@@ -414,6 +428,12 @@ private:
     QTimer *m_physicalPttFailsafe = nullptr;
     bool m_physicalPttPressed = false;
     bool m_f400PttEnabled = false;
+    int m_customPttKeyCode = -1;
+    int m_customPttScanCode = -1;
+    QString m_customPttKeyName;
+    bool m_customPttEnabled = false;
+    bool m_customPttPressed = false;
+    QTimer *m_customPttFailsafe = nullptr;
 #endif
 
 private slots:

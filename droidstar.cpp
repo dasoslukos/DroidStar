@@ -49,6 +49,49 @@ void JNICALL fromAndroidPhysicalPtt(JNIEnv *, jclass, jboolean down)
             s_physicalPttTarget->physicalPttEvent(down == JNI_TRUE);
     }, Qt::QueuedConnection);
 }
+
+// B2 learning is diagnostics/UI only; this JNI path never calls press_tx().
+void JNICALL fromAndroidCustomPttLearned(JNIEnv *env, jclass, jint code,
+                                        jint scanCode, jstring name)
+{
+    const char *utf = name ? env->GetStringUTFChars(name, nullptr) : nullptr;
+    const QString keyName = utf ? QString::fromUtf8(utf)
+                                : QStringLiteral("UNKNOWN");
+    if (utf)
+        env->ReleaseStringUTFChars(name, utf);
+    QCoreApplication *app = QCoreApplication::instance();
+    if (!app)
+        return;
+    QMetaObject::invokeMethod(app, [code, scanCode, keyName]() {
+        if (s_physicalPttTarget)
+            s_physicalPttTarget->customPttLearnedFromAndroid(
+                static_cast<int>(code), static_cast<int>(scanCode), keyName);
+    }, Qt::QueuedConnection);
+}
+
+void JNICALL fromAndroidCustomPttLearningStopped(JNIEnv *, jclass)
+{
+    QCoreApplication *app = QCoreApplication::instance();
+    if (!app)
+        return;
+    QMetaObject::invokeMethod(app, []() {
+        if (s_physicalPttTarget)
+            s_physicalPttTarget->customPttLearningStoppedFromAndroid();
+    }, Qt::QueuedConnection);
+}
+
+void JNICALL fromAndroidCustomPttKeyEvent(JNIEnv *, jclass, jint code,
+                                           jint scanCode, jboolean down)
+{
+    QCoreApplication *app = QCoreApplication::instance();
+    if (!app)
+        return;
+    QMetaObject::invokeMethod(app, [code, scanCode, down]() {
+        if (s_physicalPttTarget)
+            s_physicalPttTarget->customPttKeyEventFromAndroid(
+                static_cast<int>(code), static_cast<int>(scanCode), down == JNI_TRUE);
+    }, Qt::QueuedConnection);
+}
 } // namespace
 #endif
 
@@ -97,6 +140,13 @@ DroidStar::DroidStar(QObject *parent) :
         qWarning() << "DroidStarPTT: 12-second TX failsafe: releasing PTT";
         physicalPttEvent(false);
     });
+    // Independent from the unchanged UNIWA vendor PTT 12-second failsafe.
+    m_customPttFailsafe = new QTimer(this);
+    m_customPttFailsafe->setSingleShot(true);
+    connect(m_customPttFailsafe, &QTimer::timeout, this, [this]() {
+        qWarning() << "DroidStarPTT: B4 learned-key 12-second TX failsafe";
+        customPttKeyEventFromAndroid(-1, -1, false);
+    });
     const JNINativeMethod methods[] = {
         {const_cast<char *>("nativePhysicalPtt"),
          const_cast<char *>("(Z)V"),
@@ -108,6 +158,23 @@ DroidStar::DroidStar(QObject *parent) :
         qWarning() << "DroidStarPTT: JNI registration FAILED; hardware TX disabled";
     } else {
         qInfo() << "DroidStarPTT: JNI bridge registered";
+    }
+    const JNINativeMethod learningMethods[] = {
+        {const_cast<char *>("nativeCustomPttLearned"),
+         const_cast<char *>("(IILjava/lang/String;)V"),
+         reinterpret_cast<void *>(fromAndroidCustomPttLearned)},
+        {const_cast<char *>("nativeCustomPttLearningStopped"),
+         const_cast<char *>("()V"),
+         reinterpret_cast<void *>(fromAndroidCustomPttLearningStopped)},
+        {const_cast<char *>("nativeCustomPttKeyEvent"),
+         const_cast<char *>("(IIZ)V"),
+         reinterpret_cast<void *>(fromAndroidCustomPttKeyEvent)}
+    };
+    if (!env.registerNativeMethods(
+            "org/dudetronics/droidstar/DroidStarActivity", learningMethods, 3)) {
+        qWarning() << "DroidStarPTT: B2 learning JNI bridge registration FAILED";
+    } else {
+        qInfo() << "DroidStarPTT: B2 learning JNI bridge registered";
     }
 #endif
 }
@@ -798,6 +865,23 @@ void DroidStar::process_settings()
 	m_toggletx = (m_settings->value("TXTOGGLE", "true").toString().simplified() == "true") ? true : false;
 #ifdef Q_OS_ANDROID
     m_f400PttEnabled = m_settings->value("F400_PTT_ENABLED", false).toBool();
+    // B3: restore the user-selected key only; this never enables TX.
+    m_customPttKeyCode = m_settings->value("CUSTOM_PTT_KEYCODE", -1).toInt();
+    m_customPttScanCode = m_settings->value("CUSTOM_PTT_SCANCODE", -1).toInt();
+    m_customPttKeyName = m_settings->value("CUSTOM_PTT_KEYNAME", "").toString();
+    if (m_customPttKeyCode <= 0 || m_customPttKeyName.isEmpty()) {
+        m_customPttKeyCode = -1;
+        m_customPttScanCode = -1;
+        m_customPttKeyName.clear();
+    }
+    m_customPttEnabled = m_settings->value("CUSTOM_PTT_ENABLED", false).toBool();
+    if (m_customPttEnabled && (m_f400PttEnabled || m_customPttKeyCode <= 0 ||
+                               m_customPttKeyCode == 133)) {
+        // Fail closed on stale or conflicting persisted states.
+        m_customPttEnabled = false;
+        m_settings->setValue("CUSTOM_PTT_ENABLED", false);
+        m_settings->sync();
+    }
 #endif
 	m_recording_enabled = m_settings->value(
 	    "RECORDING_ENABLED",
@@ -1629,11 +1713,150 @@ void DroidStar::release_tx()
 }
 
 #ifdef Q_OS_ANDROID
+bool DroidStar::set_custom_ptt_enabled(bool enabled)
+{
+    if (enabled) {
+        if (m_customPttKeyCode <= 0 || m_customPttKeyName.isEmpty()) {
+            qWarning() << "DroidStarPTT: B4 no learned button to enable";
+            return false;
+        }
+        if (m_f400PttEnabled) {
+            qWarning() << "DroidStarPTT: B4 disable UNIWA vendor PTT first";
+            return false;
+        }
+        // F3 is the F400 SOS key; do not allow emergency-button TX in B4.
+        if (m_customPttKeyCode == 133) {
+            qWarning() << "DroidStarPTT: B4 refusing SOS/F3 for TX";
+            return false;
+        }
+    }
+    if (m_customPttEnabled == enabled)
+        return true;
+    if (!enabled)
+        customPttKeyEventFromAndroid(-1, -1, false);
+    m_settings->setValue("CUSTOM_PTT_ENABLED", enabled);
+    m_settings->sync();
+    if (m_settings->status() != QSettings::NoError) {
+        qWarning() << "DroidStarPTT: B4 could not save enable setting";
+        return false;
+    }
+    m_customPttEnabled = enabled;
+    qInfo() << "DroidStarPTT: B4 learned-key TX" << (enabled ? "enabled" : "disabled");
+    return true;
+}
+
+void DroidStar::customPttKeyEventFromAndroid(int keyCode, int scanCode, bool down)
+{
+    if (!down && keyCode == -1) {
+        // Focus loss, timeout, disable, or mapping replacement: force release.
+        if (!m_customPttPressed)
+            return;
+    } else {
+        // Ignore other keys, including releases for an unrelated button.
+        // Use Android keycode as the identity; scanCode is device-specific metadata.
+        if (!m_customPttEnabled || m_customPttKeyCode <= 0 ||
+            keyCode != m_customPttKeyCode)
+            return;
+    }
+    if (down) {
+        if (m_customPttPressed || m_physicalPttPressed)
+            return;
+        if (connect_status != Mode::CONNECTED_RW) {
+            qInfo() << "DroidStarPTT: B4 DOWN ignored (not connected for TX)";
+            return;
+        }
+        m_customPttPressed = true;
+        m_customPttFailsafe->start(12000);
+        qInfo() << "DroidStarPTT: B4 CUSTOM TX DOWN" << keyCode << scanCode;
+        press_tx();
+    } else if (m_customPttPressed) {
+        m_customPttPressed = false;
+        m_customPttFailsafe->stop();
+        qInfo() << "DroidStarPTT: B4 CUSTOM TX UP";
+        release_tx();
+    }
+}
+
+bool DroidStar::set_custom_ptt_learning(bool enabled)
+{
+    // Never key TX while re-learning or cancelling an assignment.
+    if (enabled && m_customPttEnabled && !set_custom_ptt_enabled(false))
+        return false;
+    const jboolean ok = QJniObject::callStaticMethod<jboolean>(
+        "org/dudetronics/droidstar/DroidStarActivity",
+        "setCustomPttLearning", "(Z)Z",
+        static_cast<jboolean>(enabled ? JNI_TRUE : JNI_FALSE));
+    return ok == JNI_TRUE;
+}
+
+void DroidStar::customPttLearnedFromAndroid(int keyCode, int scanCode,
+                                           const QString &keyName)
+{
+    // New learning replaces mapping only after disabling TX.
+    if (m_customPttEnabled && !set_custom_ptt_enabled(false))
+        return;
+    customPttKeyEventFromAndroid(-1, -1, false);
+    if (keyCode <= 0 || keyName.isEmpty()) {
+        qWarning() << "DroidStarPTT: B3 invalid learned key; ignoring";
+        return;
+    }
+    m_settings->setValue("CUSTOM_PTT_KEYCODE", keyCode);
+    m_settings->setValue("CUSTOM_PTT_SCANCODE", scanCode);
+    m_settings->setValue("CUSTOM_PTT_KEYNAME", keyName);
+    m_settings->sync();
+    if (m_settings->status() != QSettings::NoError) {
+        qWarning() << "DroidStarPTT: B3 could not save learned button";
+        emit update_log(QStringLiteral("Custom PTT: could not save learned button"));
+        return;
+    }
+    m_customPttKeyCode = keyCode;
+    m_customPttScanCode = scanCode;
+    m_customPttKeyName = keyName;
+    qInfo() << "DroidStarPTT: B3 saved learned button"
+            << keyName << keyCode << scanCode;
+    emit customPttLearned(keyName, keyCode, scanCode);
+}
+
+bool DroidStar::clear_custom_ptt_mapping()
+{
+    if (m_customPttEnabled && !set_custom_ptt_enabled(false))
+        return false;
+    customPttKeyEventFromAndroid(-1, -1, false);
+    // Only remove our three learned-key fields; keep other settings.
+    m_settings->remove("CUSTOM_PTT_KEYCODE");
+    m_settings->remove("CUSTOM_PTT_SCANCODE");
+    m_settings->remove("CUSTOM_PTT_KEYNAME");
+    m_settings->sync();
+    if (m_settings->status() != QSettings::NoError) {
+        qWarning() << "DroidStarPTT: B3 could not clear learned button";
+        emit update_log(QStringLiteral("Custom PTT: could not clear mapping"));
+        return false;
+    }
+    m_customPttKeyCode = -1;
+    m_customPttScanCode = -1;
+    m_customPttKeyName.clear();
+    qInfo() << "DroidStarPTT: B3 cleared learned button mapping";
+    return true;
+}
+
+void DroidStar::customPttLearningStoppedFromAndroid()
+{
+    emit customPttLearningStopped();
+}
+
 void DroidStar::set_f400_ptt_enabled(bool enabled)
 {
     if (m_f400PttEnabled == enabled)
         return;
 
+    // Mutual exclusion: switching vendor PTT on disables learned-key TX first.
+    if (enabled && m_customPttEnabled) {
+        if (!set_custom_ptt_enabled(false)) {
+            qWarning() << "DroidStarPTT: B4 cannot enable vendor PTT while custom TX active";
+            emit update_settings();
+            return;
+        }
+    }
     // Dropping the enable flag must never leave TX latched.
     if (!enabled)
         physicalPttEvent(false);
@@ -1650,6 +1873,8 @@ void DroidStar::set_f400_ptt_enabled(bool enabled)
         static_cast<jboolean>(enabled ? JNI_TRUE : JNI_FALSE));
     qInfo() << "DroidStarPTT: F400 physical PTT"
             << (enabled ? "enabled" : "disabled");
+    // Refresh both hardware-PTT checkboxes after automatic mutual exclusion.
+    emit update_settings();
 }
 
 void DroidStar::physicalPttEvent(bool down)
@@ -1659,7 +1884,7 @@ void DroidStar::physicalPttEvent(bool down)
             qInfo() << "DroidStarPTT: PTT DOWN ignored (F400 PTT disabled)";
             return;
         }
-        if (m_physicalPttPressed)
+        if (m_physicalPttPressed || m_customPttPressed)
             return;
         if (connect_status != Mode::CONNECTED_RW) {
             qWarning() << "DroidStarPTT: DOWN ignored (not connected for TX)";
